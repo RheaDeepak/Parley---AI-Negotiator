@@ -3,6 +3,7 @@ from functools import partial
 
 import pytest
 
+from src import personalization
 from src.agents.ai_buyer_agent import AIBuyerAgent
 from src.agents.buyer_agent import BuyerAgent
 from src.agents.merchant_agent import TransientLLMError, check_guardrails, decide_strategy, evaluate_ai
@@ -133,6 +134,50 @@ def test_guardrail_clamp_when_proposal_violates_max_discount_pct(tmp_path):
     raw_log = audit_path.read_text(encoding="utf-8")
     assert "4000" not in raw_log
     assert "4000.0" not in raw_log
+
+
+def test_evidence_label_states_the_live_discount_percentage_inline(tmp_path):
+    """Follow-up (2026-09-02): a bare "policy.qty_breaks[0].discount_pct"
+    or "policy.max_discount_pct" label reads as if a real discount is
+    being applied even when the Risk Agent (Section 2N) has zeroed it to
+    0% -- this exact ambiguity cost two rounds of back-and-forth to rule
+    out an actual computation bug (Section 2P/2Q). Every rationale that
+    cites one of these two evidence paths must now state the LIVE
+    percentage inline, right next to the label, so it can never again be
+    misread as "a discount is active" when it isn't.
+
+    Two cases: the ordinary, non-zero percentage (POLICY's real 12%,
+    proving this isn't hardcoded to always show "0%"), and the
+    HIGH-risk-zeroed case via a product with a REAL qty_breaks tier
+    (mirroring Section 2P's SKU-ELEC-007 gap-closing test)."""
+    # Case 1: ordinary counter, no risk involved -- the real 12% must show.
+    llm = ScriptedMerchantLLM([_merchant_decision("counter", price=4000.0, qty=1)])
+    offer = _offer(3900.0, qty=1)
+    result = evaluate_ai(offer, POLICY, round=1, negotiation_history=[], llm_call=llm)
+    assert "policy.max_discount_pct (12%)" in result["rationale"]
+    assert result["evidence_paths"] == ["policy.max_discount_pct"]  # schema field stays a bare dotted path
+
+    # Case 2: HIGH-risk-zeroed qty_breaks tier -- must show "(0%)", not the
+    # raw catalog rate, proving the label reflects the TIGHTENED policy
+    # actually in effect for this negotiation, not the original one.
+    product = {
+        "sku_id": "SKU-RISK-LABEL", "product_name": "Test Earbuds", "currency": "INR",
+        "list_price": 1918.96, "cost": 1000.0, "min_price": 1343.14, "max_discount_pct": 13,
+        "qty_breaks": [{"min_qty": 10, "discount_pct": 22}, {"min_qty": 25, "discount_pct": 26}],
+        "current_inventory": 50, "inventory_floor": 1, "days_in_inventory": 5,
+    }
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = []  # new buyer
+    risk = personalization.risk_assessment("BUYER-RISK-LABEL", qty=10, qty_breaks=policy["qty_breaks"], orders=orders)
+    assert risk["level"] == "high"
+    tightened_policy = personalization.apply_risk_discount_cap(policy, risk)
+
+    high_llm = ScriptedMerchantLLM([_merchant_decision("counter", price=1500.0, qty=10)])
+    high_offer = _offer(1631.12, qty=10)
+    high_result = evaluate_ai(high_offer, tightened_policy, round=1, negotiation_history=[], llm_call=high_llm)
+    assert high_result["offer"]["price"] == 1918.96  # == list_price, per Section 2P/2Q
+    assert "policy.qty_breaks[0].discount_pct (0%)" in high_result["rationale"]
+    assert "22%" not in high_result["rationale"]  # the raw, pre-tightening catalog rate must never appear
 
 
 def test_guardrail_counters_at_liquidation_relaxed_min_price_instead_of_rejecting(tmp_path):

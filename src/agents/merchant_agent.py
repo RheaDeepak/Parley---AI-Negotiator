@@ -65,6 +65,30 @@ def _floor_price(policy, qty):
     return computed, discount_evidence_path
 
 
+def _evidence_label(policy, evidence_path):
+    """Percentage-annotated version of an evidence_path string, for
+    CONSOLE/RATIONALE display only -- never used for the evidence_paths
+    audit-schema field, which stays pure dotted-path strings
+    (NEGOTIATION_SPEC.md Section 4; changing that would break every
+    exact-match test on it). Confirmed with the user (2026-09-02): a bare
+    "policy.qty_breaks[0].discount_pct" label reads as if a real discount
+    is being applied even when the Risk Agent (Section 2N) has zeroed it
+    to 0% -- e.g. a HIGH-risk negotiation settling at exactly list_price
+    still cited that tier as "driving" the floor with no indication its
+    rate was 0, costing two rounds of back-and-forth to rule out an
+    actual computation bug. Stating the live value inline removes that
+    ambiguity at the source, everywhere the label is shown, so it can't
+    recur. "policy.min_price" passes through unchanged -- it's already an
+    absolute price, always stated directly in the surrounding rationale
+    text, not a percentage that can silently be zero."""
+    if evidence_path == "policy.max_discount_pct":
+        return f"{evidence_path} ({policy['max_discount_pct']}%)"
+    if evidence_path.startswith("policy.qty_breaks["):
+        idx = int(evidence_path.split("[", 1)[1].split("]", 1)[0])
+        return f"{evidence_path} ({policy['qty_breaks'][idx]['discount_pct']}%)"
+    return evidence_path
+
+
 def _accept(offer, rationale, evidence_paths):
     return {"decision": "accept", "offer": offer, "rationale": rationale, "evidence_paths": evidence_paths}
 
@@ -130,22 +154,22 @@ def check_guardrails(offer, policy, round):
             return _reject(
                 offer,
                 f"Offer price {offer['price']} is below the allowed floor {floor:.2f} for qty "
-                f"{offer['qty']} ({evidence_path}), and policy.max_negotiation_rounds ({max_rounds}) "
-                "has been reached with no agreement.",
+                f"{offer['qty']} ({_evidence_label(policy, evidence_path)}), and "
+                f"policy.max_negotiation_rounds ({max_rounds}) has been reached with no agreement.",
                 [evidence_path, "policy.max_negotiation_rounds"],
             )
         counter_offer = new_offer(floor, offer["qty"])
         return _counter(
             counter_offer,
             f"Offer price {offer['price']} is below the allowed floor {floor:.2f} for qty "
-            f"{offer['qty']}, per {evidence_path}. Countering at {floor:.2f}.",
+            f"{offer['qty']}, per {_evidence_label(policy, evidence_path)}. Countering at {floor:.2f}.",
             [evidence_path],
         )
 
     return _accept(
         offer,
         f"Offer price {offer['price']} meets or exceeds the allowed floor {floor:.2f} for qty "
-        f"{offer['qty']}, per {evidence_path}.",
+        f"{offer['qty']}, per {_evidence_label(policy, evidence_path)}.",
         [evidence_path],
     )
 
@@ -252,7 +276,7 @@ def _build_merchant_prompt(offer, policy, round, negotiation_history):
         f"{floor:.2f} to {policy['list_price']:.2f} {policy['currency']}, inclusive. "
         f"{floor:.2f} is the exact, already-computed floor for qty {offer['qty']} (it already "
         f"combines min_price, max_discount_pct, and any applicable qty_breaks tier -- driven by "
-        f"{evidence_path}). Any counter_offer.price you propose must be >= {floor:.2f}; do not "
+        f"{_evidence_label(policy, evidence_path)}). Any counter_offer.price you propose must be >= {floor:.2f}; do not "
         "recompute this floor yourself from the raw policy numbers above."
     )
     history_desc = json.dumps(negotiation_history, indent=2) if negotiation_history else "No prior rounds."
@@ -306,8 +330,9 @@ def _validate_against_guardrails(strategy, guardrail_verdict, offer, policy, rou
         # it would be exactly the violation this milestone exists to
         # prevent. Override with the guardrail's own verdict.
         result = dict(guardrail_verdict)
+        annotated_paths = [_evidence_label(policy, p) for p in guardrail_verdict["evidence_paths"]]
         result["rationale"] = (
-            f"Layer 2 proposed accepting an offer that violates {guardrail_verdict['evidence_paths']}; "
+            f"Layer 2 proposed accepting an offer that violates {annotated_paths}; "
             "overridden -- countering at the policy floor instead."
         )
         return result, True
@@ -348,8 +373,8 @@ def _validate_against_guardrails(strategy, guardrail_verdict, offer, policy, rou
     if strategy.counter_offer.price < floor:
         clamped_offer = new_offer(floor, qty, terms=strategy.counter_offer.terms)
         rationale = (
-            f"Layer 2's proposed counter violated {evidence_path}; clamped to the policy floor "
-            "before being sent to the buyer."
+            f"Layer 2's proposed counter violated {_evidence_label(policy, evidence_path)}; clamped to "
+            "the policy floor before being sent to the buyer."
         )
         return _counter(clamped_offer, rationale, [evidence_path]), True
 

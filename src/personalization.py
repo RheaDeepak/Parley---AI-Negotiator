@@ -26,6 +26,47 @@ LTV_DISCOUNT_TIERS = (
     (50000, float("inf"), 8),
 )
 
+# Risk Agent (Milestone 5, 2026-09-02): deterministic, code-only -- no
+# LLM call anywhere in this module, same "bounded input feeding into
+# existing guardrails" pattern already used for LTV and liquidation
+# above. Confirmed with the user before implementing (same discipline as
+# the liquidation thresholds):
+#
+# "New buyer" -- fewer than this many prior orders in orders.json. The
+# seed=42 dataset has exactly 1 buyer with 0 prior orders and none with
+# exactly 1, so this threshold (< 2, i.e. 0 or 1) currently catches only
+# that one true zero-history buyer.
+RISK_NEW_BUYER_MAX_PRIOR_ORDERS = 2
+
+# "Large request" -- negotiated qty at or above the product's own
+# lowest qty_breaks tier (currently a flat 10 across every generated
+# catalog product and merchant_policy.json's fixture) -- the merchant's
+# own existing definition of a meaningfully bulk order, already baked
+# into the policy schema. No historical qty data exists in orders.json
+# to compute a "typical size per category" from instead (the generator
+# uses qty only to derive `amount`, then discards it) -- confirmed with
+# the user to reuse qty_breaks rather than add a new data field.
+RISK_LARGE_QTY_FALLBACK_THRESHOLD = 10  # only used if policy.qty_breaks is empty
+
+# "Aggressive lowball" (offer vs. floor) was considered and explicitly
+# dropped, confirmed with the user: it can't be evaluated before the
+# buyer's opening offer exists, which conflicts with the requirement that
+# this check run before any offer is generated. check_guardrails() already
+# handles a below-floor offer via its own reject/counter mechanism, so a
+# separate risk-based lowball check would be redundant with that anyway.
+
+# Reframing (2026-09-02, confirmed with the user): HIGH risk (both
+# factors) is a PRICING-ABUSE signal, not a trust/fraud signal -- it no
+# longer blocks the negotiation before any offer exists (the original
+# NEGOTIATION_DECLINED design). Instead it tightens max_discount_pct to
+# this value for that one negotiation, same "bounded input feeding into
+# the existing guardrail" pattern as the LTV bonus and liquidation ramp --
+# merchant_agent.py needed zero changes, since check_guardrails()/
+# _floor_price() already treat max_discount_pct as just another policy
+# field. 0 means full list price only, no negotiation room at all.
+RISK_HIGH_DISCOUNT_OVERRIDE_PCT = 0
+
+
 # The ultimate, non-negotiable price floor: cost + a 2% minimum margin --
 # confirmed with the user (their own example). Takes priority over
 # min_price, max_discount_pct, and the LTV bonus combined; nothing --
@@ -116,6 +157,114 @@ def ltv_discount_bonus(ltv):
         if lo <= ltv < hi:
             return bonus
     return 0  # unreachable given the tiers span [0, inf), but a safe default
+
+
+def count_prior_orders(buyer_id, orders):
+    """Count of this buyer_id's historical orders. Pure function over the
+    orders list -- no I/O, no randomness. Same shape as compute_ltv()."""
+    return sum(1 for o in orders if o["buyer_id"] == buyer_id)
+
+
+def risk_assessment(buyer_id, qty, qty_breaks, orders):
+    """Milestone 5 (Risk Agent). Deterministic, no LLM. Returns
+    {"level": "none"|"moderate"|"high", "factors": [...],
+    "evidence_paths": [...], "rationale": str,
+    "max_discount_pct_override": int | None}. "factors" is human-readable
+    prose (for the rationale/console); "evidence_paths" holds
+    schema-path-style strings matching every other guardrail's convention
+    (e.g. "policy.max_discount_pct", "catalog.days_in_inventory") for the
+    audit log's evidence_paths field -- kept separate so audit consumers
+    see a consistent shape regardless of which check fired.
+
+    Two independent factors, both knowable BEFORE any offer exists (see
+    module-level comment above RISK_NEW_BUYER_MAX_PRIOR_ORDERS for why
+    "aggressive lowball" isn't a third factor here):
+    - "new_buyer": count_prior_orders(buyer_id, orders) < RISK_NEW_BUYER_MAX_PRIOR_ORDERS
+    - "large_request": qty >= the product's lowest qty_breaks tier (or
+      RISK_LARGE_QTY_FALLBACK_THRESHOLD if qty_breaks is empty)
+
+    level is "high" (both factors), "moderate" (exactly one), or "none"
+    (neither) -- confirmed with the user. Takes `qty_breaks` (not a full
+    product/policy dict) so it works identically whichever policy it's
+    called with, catalog-derived or the merchant_policy.json fixture.
+
+    "high" (reframed 2026-09-02, confirmed with the user: a
+    PRICING-ABUSE signal, not a trust/fraud one) no longer blocks the
+    negotiation -- max_discount_pct_override carries
+    RISK_HIGH_DISCOUNT_OVERRIDE_PCT (0) for the caller to apply via
+    apply_risk_discount_cap() below; None for "moderate"/"none"."""
+    prior_orders = count_prior_orders(buyer_id, orders)
+    is_new_buyer = prior_orders < RISK_NEW_BUYER_MAX_PRIOR_ORDERS
+
+    large_qty_threshold = (
+        min(tier["min_qty"] for tier in qty_breaks) if qty_breaks else RISK_LARGE_QTY_FALLBACK_THRESHOLD
+    )
+    is_large_request = qty >= large_qty_threshold
+
+    factors = []
+    evidence_paths = []
+    if is_new_buyer:
+        factors.append(f"new buyer ({prior_orders} prior order{'s' if prior_orders != 1 else ''})")
+        evidence_paths.append("buyer.order_history")
+    if is_large_request:
+        factors.append(f"large request (qty {qty} vs typical {large_qty_threshold})")
+        evidence_paths.append("policy.qty_breaks")
+
+    if is_new_buyer and is_large_request:
+        level = "high"
+    elif factors:
+        level = "moderate"
+    else:
+        level = "none"
+
+    max_discount_pct_override = RISK_HIGH_DISCOUNT_OVERRIDE_PCT if level == "high" else None
+
+    if level == "none":
+        rationale = f"No risk factors: buyer_id={buyer_id} has {prior_orders} prior order(s), qty {qty} is below the large-request threshold ({large_qty_threshold})."
+    elif level == "high":
+        rationale = (
+            f"Risk factors for buyer_id={buyer_id}: {'; '.join(factors)}. "
+            f"max_discount_pct forced to {RISK_HIGH_DISCOUNT_OVERRIDE_PCT} for this negotiation -- "
+            "full list price only, no negotiation room -- and the human-approval gate is forced "
+            "regardless of policy.transaction_approval_threshold."
+        )
+    else:
+        rationale = f"Risk factors for buyer_id={buyer_id}: {'; '.join(factors)}."
+
+    return {
+        "level": level, "factors": factors, "evidence_paths": evidence_paths, "rationale": rationale,
+        "max_discount_pct_override": max_discount_pct_override,
+    }
+
+
+def apply_risk_discount_cap(policy, risk):
+    """Returns a NEW policy dict (does not mutate `policy`) with
+    max_discount_pct (and every qty_breaks tier's discount_pct) capped at
+    risk["max_discount_pct_override"] -- a no-op (returns a copy of
+    `policy` unchanged) when that key is None ("moderate"/"none" risk).
+
+    BOTH max_discount_pct and qty_breaks need capping, not just
+    max_discount_pct: merchant_agent._applicable_tier() always prefers a
+    matching qty_breaks tier's discount_pct over max_discount_pct
+    (Section 2 -- qty_breaks tiers OVERRIDE the base rate, they don't
+    stack with it). Since "large_request" (one of the two factors that
+    must BOTH be true to reach "high") is defined as qty at or above the
+    product's own lowest qty_breaks tier, any qty that triggers "high"
+    risk will always match at least that tier -- so capping
+    max_discount_pct alone would be silently overridden by the very
+    qty_breaks tier the large request qualifies for, defeating the "full
+    list price only" intent entirely. min() rather than a flat overwrite,
+    so this only ever tightens a tier's rate, never raises one."""
+    override_pct = risk.get("max_discount_pct_override")
+    if override_pct is None:
+        return dict(policy)
+    effective = dict(policy)
+    effective["max_discount_pct"] = min(policy["max_discount_pct"], override_pct)
+    effective["qty_breaks"] = [
+        {**tier, "discount_pct": min(tier["discount_pct"], override_pct)}
+        for tier in policy.get("qty_breaks", [])
+    ]
+    return effective
 
 
 def apply_ltv_bonus(policy, ltv_bonus_pct, hard_ceiling_pct=HARD_DISCOUNT_CEILING_PCT):

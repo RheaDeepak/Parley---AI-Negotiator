@@ -1155,6 +1155,399 @@ changed.
 
 ---
 
+## Section 2M — Risk Agent (Milestone 5)
+
+> **Superseded 2026-09-02 (Section 2N, then Section 2O):** this section's
+> "high" and "moderate" rows and its Wiring code below describe the
+> ORIGINAL design — `high` risk blocked the negotiation entirely
+> (`NEGOTIATION_DECLINED`, no offer ever generated), and `moderate` forced
+> the human-approval gate. Both reframed the same day, before this
+> design shipped to any real demo — kept here as historical record per
+> this file's layered-correction discipline. See Section 2N for `high`'s
+> current behavior (a forced `max_discount_pct` of 0, not a block) and
+> Section 2O for `moderate`'s (no gate, zero added friction — logged
+> only). The `none` row and the threshold table below are UNCHANGED.
+
+Deterministic, code-only — no LLM call anywhere in this feature. Reuses
+the exact "bounded input feeding into the existing guardrails" pattern
+already used for LTV (Section 2C) and liquidation (Section 2J):
+`personalization.py` computes a signal from data already available;
+`merchant_agent.py`/`negotiation_loop.py` are the only things that act on
+it, and only `negotiation_loop.py` needed changes here (`merchant_agent.py`
+is untouched — the risk gate runs entirely before any offer reaches it).
+
+### Thresholds — confirmed with the user before implementing, same discipline as the liquidation category table
+
+Two independent factors, both knowable **before any offer exists** (a
+third candidate, "aggressive lowball" — offer vs. floor — was considered
+and explicitly dropped: it structurally can't be evaluated pre-offer, and
+`check_guardrails()`'s own reject/counter logic already covers a
+below-floor offer once one exists):
+
+| Factor | Threshold | Why |
+|---|---|---|
+| `new_buyer` | `count_prior_orders(buyer_id, orders) < 2` (i.e. 0 or 1 prior orders) | The seed=42 dataset has exactly 1 buyer with 0 prior orders and none with exactly 1 — this threshold currently catches only that true zero-history buyer. |
+| `large_request` | `qty >= min(tier["min_qty"] for tier in policy["qty_breaks"])` (currently a flat 10 across every generated catalog product and `merchant_policy.json`'s fixture); falls back to `RISK_LARGE_QTY_FALLBACK_THRESHOLD = 10` if `qty_breaks` is empty | `orders.json` has no historical qty data to compute a "typical size per category" from (the generator uses qty only to derive `amount`, then discards it) — confirmed with the user to reuse the product's own bulk-tier threshold instead, rather than add a new data field. |
+
+`personalization.risk_assessment(buyer_id, qty, qty_breaks, orders)` —
+pure function, returns `{"level": "none"|"moderate"|"high", "factors":
+[...], "evidence_paths": [...], "rationale": str}`. `factors` is
+human-readable prose (for the rationale); `evidence_paths` holds
+schema-path-style strings (`"buyer.order_history"`, `"policy.qty_breaks"`)
+matching every other guardrail's convention, kept deliberately separate
+from the prose.
+
+| Level | Condition | Effect |
+|---|---|---|
+| `high` | Both factors | `NEGOTIATION_DECLINED` — negotiation never starts, no offer is ever generated. |
+| `moderate` | Exactly one factor | Negotiation proceeds normally; the human-approval gate is forced later, regardless of `policy.transaction_approval_threshold`. |
+| `none` | Neither factor | No effect — byte-identical to a policy with no Risk Agent involvement at all. |
+
+The check only runs when both `buyer_id` and `orders` are supplied to
+`run_negotiation()`/`run_full_transaction()` (both default `None`) — the
+`BUYER_ID`-unset path (including the `merchant_policy.json` smoke-test
+fixture) is completely unaffected, confirmed with the user rather than
+treating an anonymous buyer as automatically "new."
+
+### Wiring
+
+`run_negotiation()` runs the check as literally its first action, before
+`buyer.initial_offer()` is ever called:
+
+```python
+if buyer_id is not None and orders is not None:
+    risk = personalization.risk_assessment(buyer_id, buyer.qty, policy.get("qty_breaks", []), orders)
+    risk_level = risk["level"]
+    if risk_level != "none":
+        _log(on_event, 0, "risk-agent", "risk_review", None, risk["rationale"], risk["evidence_paths"], path=audit_path)
+    if risk_level == "high":
+        return {"state": "NEGOTIATION_DECLINED", "offer": None, "risk_level": risk_level}
+```
+
+A `risk_review` entry (new `agent: "risk-agent"` value, joining
+`"buyer-agent"`/`"merchant-agent"`) is logged only when risk is
+moderate or high — mirroring `liquidation_applied`'s "only log when
+something notable happened" precedent (Section 2E), not logged on every
+negotiation. Uses `round_num=0` (not `None`) for its `on_event` callback:
+`_print_event()` reads `round_num=None` as "Payment phase" (Milestone 2
+convention); this check runs before round 1, not during payment, so `0`
+reads correctly on the console as "before round 1."
+
+`risk_level` is carried on the `AGREEMENT_RECORDED` outcome dict (`None`
+on every pre-Milestone-5 caller and on non-agreement outcomes) so
+`run_full_transaction()` can act on it later:
+
+```python
+risk_level = negotiation_outcome.get("risk_level")
+if total > threshold or risk_level == "moderate":
+    ...  # same approval_requested / approval_granted / approval_declined
+         # flow as the price-threshold case, with rationale/evidence_paths
+         # ("risk_agent.risk_level") distinguishing which condition fired
+```
+
+`buyer_id`/`orders` are threaded through `run_full_transaction()` (both
+new, optional, default `None`) straight to `run_negotiation()` — no other
+change to that function. `__main__` passes its existing `buyer_id`
+variable and the `orders` list already loaded for the LTV computation
+(Section 2C) — no extra I/O.
+
+### Verification
+
+- Live-verified all three levels against the real seed=42 dataset:
+  `BUYER-001` (the one true zero-order buyer) with the default demo qty
+  (3, below the large-request threshold) → `moderate`, forces approval
+  even on a transaction (`5008.50` INR) far below
+  `policy.transaction_approval_threshold` (`20000`). Direct
+  `run_negotiation()` call with `qty=10` → `high` → `NEGOTIATION_DECLINED`,
+  `offer: null`, confirmed via the audit log that the risk_review entry
+  is the *only* entry ever written (no offer was ever generated).
+- Added `test_risk_assessment_pure_function_level_combinations`,
+  `test_new_buyer_large_request_is_declined_before_any_offer_generated`,
+  `test_established_buyer_normal_qty_proceeds_completely_unaffected`, and
+  `test_moderate_risk_forces_human_approval_even_for_small_transaction`
+  (`test_personalization.py`) — covering all four requirement #5 cases,
+  including proving the established-buyer case is byte-identical (price,
+  qty) to omitting the Risk Agent entirely.
+- Full suite: 87 passed, 3 skipped, zero regressions (up from 83 passed
+  pre-feature).
+
+---
+
+## Section 2N — Reframe: HIGH risk tightens pricing instead of blocking the negotiation (2026-09-02)
+
+**Request:** reframe HIGH risk (both factors) as a PRICING-ABUSE signal,
+not a trust/fraud signal — remove `NEGOTIATION_DECLINED` entirely; the
+negotiation now runs normally, but with `max_discount_pct` forced to 0
+for that one negotiation (full list price, no room to negotiate below
+it), feeding into the SAME guardrail mechanism already used for
+LTV/liquidation rather than a new separate code path. HIGH still forces
+the human-approval gate, same as MODERATE — confirmed with the user
+rather than assumed ("the risk hasn't gone away, just the response to it
+has").
+
+### A catch found while implementing, not just asserted
+
+Capping `max_discount_pct` alone would NOT have achieved "full list
+price only" — `merchant_agent._applicable_tier()` (Section 2) always
+prefers a matching `qty_breaks` tier's `discount_pct` over
+`max_discount_pct`, and `large_request` (one of the two factors HIGH
+requires) is *defined* as `qty >= the product's lowest qty_breaks tier` —
+meaning any qty that qualifies for HIGH risk will always also match at
+least that tier, silently overriding a `max_discount_pct=0` cap and
+defeating the intent entirely. Confirmed live before shipping: at
+`qty=10` on `SKU-ELEC-007` (`discount_pct=21%` at that tier), capping
+`max_discount_pct` alone would have settled at `1515.98` (list price
+`1918.96 × 0.79`), not full list price.
+
+**Fix:** `apply_risk_discount_cap()` caps BOTH `max_discount_pct` and
+every `qty_breaks` tier's `discount_pct` (via `min()`, so it only ever
+tightens, never raises a rate):
+
+```python
+def apply_risk_discount_cap(policy, risk):
+    override_pct = risk.get("max_discount_pct_override")
+    if override_pct is None:
+        return dict(policy)
+    effective = dict(policy)
+    effective["max_discount_pct"] = min(policy["max_discount_pct"], override_pct)
+    effective["qty_breaks"] = [
+        {**tier, "discount_pct": min(tier["discount_pct"], override_pct)}
+        for tier in policy.get("qty_breaks", [])
+    ]
+    return effective
+```
+
+`risk_assessment()` now returns `max_discount_pct_override` (`0` for
+`"high"`, `None` otherwise, via new constant
+`RISK_HIGH_DISCOUNT_OVERRIDE_PCT = 0`) instead of a decline signal.
+`run_negotiation()` applies the cap to its own local `policy` (a
+reassignment — the caller's original dict is never mutated) right after
+the risk check, before `buyer.initial_offer()` — everything downstream
+(the offer/counter loop, `_floor_price()`, the audit trail) automatically
+runs against the tightened policy with zero changes to
+`merchant_agent.py`. `NEGOTIATION_DECLINED`'s decline branch, the dead
+`_print_terminal_summary()` handling for it, and the "high risk never
+reaches run_full_transaction()" docstring claim are all removed.
+
+`run_full_transaction()`'s approval-gate condition changed from
+`risk_level == "moderate"` to `risk_level in ("moderate", "high")` —
+HIGH now also forces the gate, per the confirmed assumption above.
+`risk_assessment()`'s `"high"` rationale now names both the discount
+override and the forced approval gate explicitly, so the audit trail
+stays fully explainable despite no longer blocking anything.
+
+### A second inconsistency found while live-verifying, fixed the same way as Section 2L
+
+`negotiation_loop.py`'s "Effective negotiation floor at qty=N" console
+line (Section 2H) is computed in `__main__`, BEFORE `run_negotiation()`
+(and therefore before the risk check) ever runs — for a HIGH-risk
+scenario this printed the stale, pre-cap floor while the negotiation
+actually settled at the post-cap (full list price) value, a visible
+discrepancy on exactly the scenario this feature exists to demo. Fixed
+by computing a throwaway `preview_policy` in `__main__` (calling
+`risk_assessment()`/`apply_risk_discount_cap()` read-only, purely for
+the print — `risk_assessment()` is a pure function with no logging side
+effects) so the printed floor matches what `run_negotiation()`'s own,
+independent, official risk check will actually enforce.
+
+### `DEMO_QTY` env var (Milestone 5 follow-up)
+
+`negotiation_loop.py` hardcoded the negotiated quantity at `DEFAULT_DEMO_QTY = 3`
+with no way to override it from the CLI — meaning HIGH risk (which needs
+`qty >= 10`) was unreachable through `python -m src.negotiation_loop`
+without editing source. `DEMO_QTY` (parsed like `BUYER_BUDGET`, a clear
+`SystemExit` on invalid input rather than a silent fallback) now
+overrides it, so both MODERATE and HIGH are demonstrable end to end
+through the normal CLI.
+
+### Verification
+
+- Live-verified end to end via the CLI (`PRODUCT_ID=SKU-ELEC-007
+  BUYER_ID=BUYER-001 DEMO_QTY=10`, real Razorpay test-mode payment):
+  negotiation proceeds normally, settles at `1918.96` (== `list_price`,
+  confirmed zero discount room), `approval_requested` correctly cites
+  "High risk," and the "Effective negotiation floor" preview line
+  matches the settled price exactly.
+- Replaced `test_new_buyer_large_request_is_declined_before_any_offer_generated`
+  (renamed `..._proceeds_with_zero_discount_room_via_run_negotiation`) to
+  assert the new behavior instead of `NEGOTIATION_DECLINED`. Added
+  `test_high_risk_forces_list_price_only_and_still_requires_human_approval`
+  (`test_personalization.py`) — the requirement's explicit replacement
+  test: a HIGH-risk negotiation reaches `COMPLETED`, the effective floor
+  equals `list_price` exactly, and human-approval fires regardless of
+  transaction total.
+- Full suite: 88 passed, 3 skipped, zero regressions (up from 87 passed
+  pre-reframe).
+
+---
+
+## Section 2O — Drop forced human-approval from MODERATE risk (2026-09-02)
+
+**Request:** drop forced human-approval from MODERATE risk entirely.
+Final behavior across all three tiers:
+
+| Level | Pricing | Approval gate | Audit |
+|---|---|---|---|
+| `none` | untouched | not forced | no `risk_review` entry logged at all |
+| `moderate` (one factor) | untouched | **not forced** (changed by this section) | `risk_review` entry logged, naming the single factor |
+| `high` (both factors) | `max_discount_pct` forced to 0 (Section 2N, unchanged) | forced (Section 2N, unchanged) | `risk_review` entry logged, naming both factors and both consequences |
+
+**Fix:** `run_full_transaction()`'s approval-gate condition changed from
+`risk_level in ("moderate", "high")` back to `risk_level == "high"` —
+`total > threshold` is still evaluated independently either way (a large
+enough transaction still triggers the gate regardless of risk level, for
+any tier). `personalization.risk_assessment()` needed no changes at all:
+its `"moderate"` rationale never mentioned approval to begin with (only
+`"high"`'s did, and still does) — dropping the gate for `"moderate"`
+was purely a `negotiation_loop.py` change.
+
+**Verification:**
+- Live-verified: `PRODUCT_ID=SKU-ELEC-007 BUYER_ID=BUYER-001` (MODERATE,
+  new buyer only) now goes straight from `inventory_hold` to
+  `payment_initiated` with no `approval_requested` entry at all, and
+  settles at the normal discounted price (`1669.50`, not `list_price`).
+- Rewrote `test_moderate_risk_forces_human_approval_even_for_small_transaction`
+  → `test_moderate_risk_logs_but_does_not_gate_or_restrict_pricing`
+  (`test_personalization.py`): asserts `approval_calls == []` (the gate
+  is never invoked at all, not just "not required"), the settled price
+  equals the normal discount-capped floor (not `list_price`), and the
+  `risk_review` entry is still present naming only the one factor.
+  `test_high_risk_forces_list_price_only_and_still_requires_human_approval`
+  is unchanged — HIGH's behavior is untouched by this section.
+- Full suite: 88 passed, 3 skipped, zero regressions (same count as
+  pre-fix — one test rewritten in place, not added).
+
+---
+
+## Section 2P — Investigation + console-explainability fix: HIGH-risk console rationale vs. actual floor (2026-09-02)
+
+**Bug report:** the console states `"max_discount_pct forced to 0 --
+full list price only, no negotiation room"` for a HIGH-risk negotiation,
+but the effective floor still comes from
+`policy.qty_breaks[0].discount_pct`, not `list_price` — implying
+`apply_risk_discount_cap()` (Section 2N) wasn't actually zeroing
+`qty_breaks`.
+
+**Investigation:** could not reproduce a wrong PRICE. A direct
+`risk_assessment()` → `apply_risk_discount_cap()` → `_floor_price()`
+check, and a full live CLI run of the exact reproduction
+(`PRODUCT_ID=SKU-ELEC-007 BUYER_ID=BUYER-001 DEMO_QTY=10`), both showed
+`floor == list_price` exactly (`1918.96 == 1918.96`) — `qty_breaks` was
+correctly zeroed by Section 2N's fix. The evidence label naming
+`"policy.qty_breaks[0].discount_pct"` is accurate but genuinely
+confusing at 0% — it reads as if a qty-break discount is active when
+none is; `_floor_price()`'s evidence-attribution logic (Section 2I)
+correctly names whichever term won the `max()`, it just doesn't say
+*how much* that term is currently worth.
+
+**A real gap found regardless:** the existing HIGH-risk test
+(`test_high_risk_forces_list_price_only_and_still_requires_human_approval`)
+used `_demo_product()`, which has EMPTY `qty_breaks` — so it never
+actually exercised the `qty_breaks`-zeroing code path in
+`apply_risk_discount_cap()` at all; its "large_request" factor was
+triggered via `RISK_LARGE_QTY_FALLBACK_THRESHOLD` instead. The test
+would have passed even if that zeroing loop were entirely broken.
+Confirmed by temporarily reverting the zeroing and re-running the test:
+it failed as expected (`22 == 0` assertion, then restored and re-verified
+passing).
+
+**Fixes:**
+1. **Test coverage** — rewrote the test to use a product with REAL
+   `qty_breaks` tiers (mirroring `SKU-ELEC-007`'s shape: `min_qty=10,
+   discount_pct=22`), at a qty matching that tier, and added an explicit
+   assertion that the tier's `discount_pct` was actually zeroed
+   (`tightened_policy["qty_breaks"][0]["discount_pct"] == 0`) — not just
+   that the final floor happened to equal `list_price`, which could
+   theoretically be coincidental.
+2. **Console explainability** — `run_negotiation()`'s risk_review log
+   entry now states the ACTUAL, freshly-recomputed effective floor in
+   the SAME rationale line as the "no negotiation room" claim, via the
+   exact `_floor_price()` call the negotiation itself is about to use
+   (against the already-tightened `policy`) — not a separate,
+   independently-asserted claim that could silently drift from what
+   `check_guardrails()` actually enforces if a future change broke the
+   zeroing again:
+
+   ```python
+   if risk_level == "high":
+       effective_floor, _ = merchant_agent._floor_price(policy, buyer.qty)
+       rationale = f"{rationale} Effective floor for this negotiation: {effective_floor:.2f} {policy['currency']}."
+   ```
+
+   Example (live-verified): `"...max_discount_pct forced to 0 for this
+   negotiation -- full list price only, no negotiation room -- and the
+   human-approval gate is forced regardless of
+   policy.transaction_approval_threshold. Effective floor for this
+   negotiation: 1918.96 INR."` If the zeroing ever broke again, this
+   number would visibly disagree with `list_price` right there, in the
+   line making the "no negotiation room" claim — not two separately
+   printed/logged facts that could quietly drift apart.
+
+**Verification:**
+- Full suite: 88 passed, 3 skipped, zero regressions.
+
+---
+
+## Section 2Q — Console label follow-up: state the live discount percentage inline (2026-09-02)
+
+**Request:** the exact ambiguity from Section 2P (a bare
+`"policy.qty_breaks[0].discount_pct"` label reading as if a real
+discount were active, when the Risk Agent had zeroed it to 0%) cost two
+rounds of back-and-forth before it was conclusively ruled out as a real
+computation bug (proven both directions with side-by-side arithmetic and
+a full live payment run in Section 2P). Rather than leave that ambiguity
+for a judge to re-discover in the audit log, state the live percentage
+inline in the label itself, everywhere it appears — e.g.
+`"policy.qty_breaks[0].discount_pct (0%)"`.
+
+**Fix:** new `merchant_agent._evidence_label(policy, evidence_path)` —
+a display-only annotator, used exclusively in rationale/console text:
+
+```python
+def _evidence_label(policy, evidence_path):
+    if evidence_path == "policy.max_discount_pct":
+        return f"{evidence_path} ({policy['max_discount_pct']}%)"
+    if evidence_path.startswith("policy.qty_breaks["):
+        idx = int(evidence_path.split("[", 1)[1].split("]", 1)[0])
+        return f"{evidence_path} ({policy['qty_breaks'][idx]['discount_pct']}%)"
+    return evidence_path  # policy.min_price -- already an absolute value, stated directly elsewhere
+```
+
+Deliberately **not** used for the `evidence_paths` audit-schema field
+(Section 4: `"array of strings | Dotted paths into the policy object"`)
+— that field stays pure dotted-path strings, unchanged, so every
+existing exact-match test on it (Section 2I's evidence-attribution
+tests especially) needed zero changes. The annotation is applied only
+where a human (or a judge) actually reads the label: every rationale
+string in `check_guardrails()` (accept/counter/round-cap-reject),
+`_validate_against_guardrails()`'s clamp rationale, `_build_merchant_prompt()`'s
+LLM-facing floor description, and both "Effective negotiation floor"
+console lines in `negotiation_loop.py` (the pre-negotiation preview and
+the risk_review entry's inline floor statement from Section 2P).
+
+**Live-verified**, same reproduction as Section 2P — both occurrences
+now show the annotated label:
+
+```
+Effective negotiation floor at qty=10: 1918.96 INR (driven by policy.qty_breaks[0].discount_pct (0%))
+...
+    Offer price 1631.12 is below the allowed floor 1918.96 for qty 10, per policy.qty_breaks[0].discount_pct (0%). Countering at 1918.96.
+```
+
+**Verification:**
+- Added `test_evidence_label_states_the_live_discount_percentage_inline`
+  (`test_ai_merchant_agent.py`) — two cases: an ordinary, non-risk
+  counter must show the real, non-zero percentage (`POLICY`'s 12%,
+  proving the label isn't hardcoded to always show `0%`), and a
+  HIGH-risk-zeroed counter (product with a real `qty_breaks` tier,
+  mirroring Section 2P's `SKU-ELEC-007` gap-closing test) must show
+  `(0%)` and must NOT contain the raw, pre-tightening catalog rate
+  (`22%`) anywhere in the rationale.
+- Full suite: 89 passed, 3 skipped, zero regressions (up from 88 passed
+  pre-fix).
+
+---
+
 ## Section 3 — State machine
 
 ### States
@@ -1167,6 +1560,12 @@ changed.
 | `AGREEMENT_RECORDED` | **Terminal.** Merchant accepted an offer. |
 | `REJECTED` | **Terminal.** Explicit policy violation with no viable counter, or the round cap was reached with no agreement. |
 | `BUYER_UNAVAILABLE` | **Terminal (Milestone 3a, AI buyer only).** The AI buyer's LLM backend stayed unreachable/rate-limited through all retries — see Section 2A. Never reachable with the scripted buyer. |
+
+`NEGOTIATION_DECLINED` (Milestone 5's original Risk Agent design) is not
+listed here — reframed in Section 2N (2026-09-02) before it shipped to
+any real demo; a "high" risk verdict no longer produces a distinct
+terminal state, it tightens `policy.max_discount_pct` instead and the
+negotiation proceeds through the normal states above.
 
 ### Transition table
 

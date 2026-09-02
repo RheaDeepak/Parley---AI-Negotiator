@@ -143,6 +143,7 @@ Configure via environment variables, all optional:
 | `BUYER_BUDGET` | a number | Overrides the buyer's max acceptable price / persona budget directly. |
 | `BUYER_MODE` | `scripted` (default) or `ai` | `ai` uses `AIBuyerAgent` (Gemini-driven); needs `GEMINI_API_KEY`. |
 | `MERCHANT_MODE` | `rules` (default) or `ai` | `ai` adds the Layer 2 Gemini strategy layer on top of the same Layer 1 guardrails; needs `GEMINI_API_KEY`. |
+| `DEMO_QTY` | an integer (default `3`) | Negotiated quantity. Set to `10`+ alongside a new (never-ordered) `BUYER_ID` to trigger the Risk Agent's HIGH level end to end -- see below. |
 
 Console output streams each round live (`[Round N] agent: decision`),
 followed by a plain-language summary block for the final outcome
@@ -177,6 +178,30 @@ FORCE_INSUFFICIENT_INVENTORY=1 PRODUCT_ID=SKU-ELEC-001 python -m src.negotiation
 
 Both flags default to off and only change behavior when explicitly set.
 
+### Triggering each Risk Agent level on demand
+
+Requires `BUYER_ID` (the check only runs when a buyer is identifiable).
+`BUYER-001` is the seed=42 dataset's one buyer with zero prior orders:
+
+```bash
+# MODERATE -- one factor (new buyer). Proceeds with ZERO added friction --
+# no forced approval, pricing untouched -- but still logs a risk_review
+# audit entry naming the factor, for visibility without friction.
+PRODUCT_ID=SKU-ELEC-007 BUYER_ID=BUYER-001 python -m src.negotiation_loop
+
+# HIGH -- both factors (new buyer + large request, via DEMO_QTY >= 10).
+# Negotiation still proceeds -- max_discount_pct is forced to 0 for it
+# (full list price only), and human approval IS required (needs both
+# Razorpay env vars set to reach that gate).
+PRODUCT_ID=SKU-ELEC-007 BUYER_ID=BUYER-001 DEMO_QTY=10 python -m src.negotiation_loop
+```
+
+Watch for `[Round 0] risk-agent: risk_review` near the top of the
+output either way. Only the HIGH run reaches an `approval_requested`
+line -- compare its rationale, which names "risk", not
+`policy.transaction_approval_threshold`, when risk is what
+triggered the gate.
+
 ## Running the tests
 
 ```bash
@@ -208,13 +233,29 @@ choices given the time available:
   trivially inspectable (`cat`/`grep`/a JSONL viewer), at the cost of no
   concurrent-write safety or query layer -- fine for a single-operator
   demo, not for production multi-tenant use.
-- **No risk-agent yet.** `AGENTS.md` names an `auditor-agent` role;
-  today, audit logging is a shared library call (`audit_logger.log_entry`)
-  used directly by the orchestrator and both agents, not a separate agent
-  that independently reviews decisions before they're allowed to proceed.
-  The guardrail layer (`check_guardrails()`) plays that gatekeeping role
-  for pricing specifically; a standalone risk/audit agent reviewing the
-  full transaction is out of scope for this build.
+- **Risk Agent: implemented (Milestone 5).** Deterministic and
+  code-only -- no LLM call, same "bounded input feeding into existing
+  guardrails" pattern already used for LTV and liquidation. Runs first,
+  before any offer is generated, via `personalization.risk_assessment()`:
+  a buyer with fewer than 2 prior orders is flagged "new"; a request at
+  or above the product's own bulk-tier quantity (`qty_breaks`, 10 units
+  in the generated catalog) is flagged "large". Reframed as a
+  PRICING-ABUSE signal, not a trust/fraud one: **HIGH** (both factors)
+  no longer blocks the negotiation -- it forces `max_discount_pct` to 0
+  for that one negotiation (full list price, no room to haggle) via
+  `apply_risk_discount_cap()`, feeding straight into the same
+  `check_guardrails()`/`_floor_price()` mechanism every other policy
+  field already flows through, plus forces the human-approval gate.
+  **MODERATE** (exactly one factor) proceeds with zero added friction --
+  no forced approval, pricing untouched. Neither -> no effect. Every
+  flagged assessment (MODERATE and HIGH) is logged as a `risk_review`
+  audit entry naming the
+  specific factors and,
+  for HIGH, that the discount cap was applied. `audit_logger.log_entry`'s
+  shared call, used directly by every agent including this one, still
+  plays the role `AGENTS.md`'s `auditor-agent` name describes -- there's
+  no separate networked agent
+  process, consistent with the single-process scoping above.
 - **Payment outcome is simulated, not a real Checkout capture.** See
   "Payment simulation boundary" above -- a deliberate consequence of this
   being a headless CLI flow with no browser step, not a shortcut around

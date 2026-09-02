@@ -4,7 +4,7 @@ import pytest
 
 from src import personalization
 from src.agents.buyer_agent import BuyerAgent
-from src.negotiation_loop import run_full_transaction
+from src.negotiation_loop import run_full_transaction, run_negotiation
 
 
 def test_ltv_computation_is_deterministic():
@@ -254,6 +254,233 @@ class SpyClient:
 def _read_log(path):
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Risk Agent (Milestone 5) -- deterministic, no LLM, thresholds confirmed
+# with the user 2026-09-02: new_buyer = fewer than 2 prior orders;
+# large_request = qty >= the product's lowest qty_breaks tier (10, via
+# _demo_product()'s empty qty_breaks -> RISK_LARGE_QTY_FALLBACK_THRESHOLD).
+# ---------------------------------------------------------------------------
+
+
+def test_risk_assessment_pure_function_level_combinations():
+    """Direct unit coverage of personalization.risk_assessment()'s four
+    combinations, independent of the negotiation loop."""
+    orders = [{"buyer_id": "BUYER-EXISTING", "amount": 100.0}] * 5  # 5 prior orders -- established
+
+    # Neither factor: established buyer, small qty.
+    none_result = personalization.risk_assessment("BUYER-EXISTING", qty=3, qty_breaks=[], orders=orders)
+    assert none_result["level"] == "none"
+    assert none_result["factors"] == []
+    assert none_result["evidence_paths"] == []
+
+    # Only new_buyer: 0 prior orders, small qty.
+    moderate_new_buyer = personalization.risk_assessment("BUYER-NEW", qty=3, qty_breaks=[], orders=orders)
+    assert moderate_new_buyer["level"] == "moderate"
+    assert moderate_new_buyer["evidence_paths"] == ["buyer.order_history"]
+
+    # Only large_request: established buyer, qty at the threshold.
+    moderate_large_qty = personalization.risk_assessment("BUYER-EXISTING", qty=10, qty_breaks=[], orders=orders)
+    assert moderate_large_qty["level"] == "moderate"
+    assert moderate_large_qty["evidence_paths"] == ["policy.qty_breaks"]
+
+    # Both: new buyer AND large qty.
+    high_result = personalization.risk_assessment("BUYER-NEW", qty=10, qty_breaks=[], orders=orders)
+    assert high_result["level"] == "high"
+    assert high_result["evidence_paths"] == ["buyer.order_history", "policy.qty_breaks"]
+
+    # Exactly 1 prior order is still "new" (< 2, the confirmed threshold).
+    one_order = personalization.risk_assessment("BUYER-ONE", qty=3, qty_breaks=[], orders=[{"buyer_id": "BUYER-ONE", "amount": 1.0}])
+    assert one_order["level"] == "moderate"
+
+    # qty_breaks, when present, overrides the flat fallback (10) with its
+    # own lowest tier.
+    tiered = personalization.risk_assessment(
+        "BUYER-EXISTING", qty=5, qty_breaks=[{"min_qty": 5, "discount_pct": 15}, {"min_qty": 20, "discount_pct": 25}],
+        orders=orders,
+    )
+    assert tiered["level"] == "moderate"  # qty(5) >= lowest tier(5), even though it's below the flat fallback(10)
+
+
+def test_new_buyer_large_request_proceeds_with_zero_discount_room_via_run_negotiation(tmp_path):
+    """A direct, run_negotiation()-level check (no payment phase) that a
+    new buyer requesting a large qty (HIGH risk: both factors) proceeds
+    normally rather than being blocked -- reframed 2026-09-02 (Section
+    2N, confirmed with the user): HIGH risk is a PRICING-ABUSE signal,
+    not a trust/fraud one, so it no longer blocks the negotiation before
+    any offer exists (the original NEGOTIATION_DECLINED design). Instead
+    max_discount_pct is forced to 0 for this negotiation -- full list
+    price only. See test_high_risk_forces_list_price_only_and_still_requires_human_approval
+    below for the fuller end-to-end (payment + approval-gate) version of
+    this same scenario."""
+    audit_path = tmp_path / "negotiation.log"
+    product = _demo_product("SKU-RISK-001", current_inventory=50)  # qty_breaks=[] -> fallback threshold 10
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = []  # this buyer has never ordered anything
+
+    buyer = BuyerAgent(qty=10, opening_discount_pct=15, max_acceptable_price=1000.0, list_price=policy["list_price"])
+    outcome = run_negotiation(policy, buyer, audit_path=str(audit_path), buyer_id="BUYER-BRAND-NEW", orders=orders)
+
+    assert outcome["state"] in ("AGREEMENT_RECORDED", "REJECTED")
+    assert outcome["risk_level"] == "high"
+    if outcome["state"] == "AGREEMENT_RECORDED":
+        assert outcome["offer"]["price"] == policy["list_price"]  # zero discount room
+
+    entries = _read_log(audit_path)
+    risk_entries = [e for e in entries if e["action"] == "risk_review"]
+    assert len(risk_entries) == 1
+    assert "new buyer" in risk_entries[0]["rationale"]
+    assert "large request" in risk_entries[0]["rationale"]
+    assert "max_discount_pct forced to 0" in risk_entries[0]["rationale"]
+    assert any(e["action"] == "offer" for e in entries)  # unlike the old behavior, an offer IS generated
+
+
+def test_high_risk_forces_list_price_only_and_still_requires_human_approval(tmp_path):
+    """Requirement #4's explicit replacement test (Section 2N, confirmed
+    with the user 2026-09-02): a HIGH-risk negotiation (new buyer AND
+    large qty) reaches a NORMAL outcome -- no block -- but with
+    max_discount_pct forced to 0 for this negotiation, so the effective
+    floor equals list_price exactly (no negotiation room at all).
+    Human-approval is still forced, same mechanism as MODERATE, even for
+    a transaction total far below transaction_approval_threshold --
+    "the risk hasn't gone away, just the response to it has," per the
+    user's own framing, confirmed rather than assumed.
+
+    2026-09-02 gap-closing follow-up: uses a product with REAL qty_breaks
+    tiers (mirroring SKU-ELEC-007's shape, where the actual gap was
+    reported), not _demo_product()'s empty ones -- the qty (10) used
+    below deliberately matches this product's first tier's min_qty, so
+    if apply_risk_discount_cap() only zeroed max_discount_pct and left
+    qty_breaks untouched, _applicable_tier() would still pick that tier's
+    (unzeroed) discount_pct over max_discount_pct and the floor would
+    land at 780.00 (1000 * (1 - 22%)), not list_price -- the exact
+    silent-failure mode a qty_breaks-less product could never expose."""
+    audit_path = tmp_path / "negotiation.log"
+    product = _demo_product("SKU-RISK-004", current_inventory=50)
+    product["qty_breaks"] = [{"min_qty": 10, "discount_pct": 22}, {"min_qty": 25, "discount_pct": 26}]
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = []  # new buyer -- the first of the two HIGH-risk factors
+
+    high_risk = personalization.risk_assessment("BUYER-BRAND-NEW-3", qty=10, qty_breaks=policy["qty_breaks"], orders=orders)
+    assert high_risk["level"] == "high"
+    tightened_policy = personalization.apply_risk_discount_cap(policy, high_risk)
+    assert tightened_policy["qty_breaks"][0]["discount_pct"] == 0  # the tier itself was actually zeroed
+
+    from src.agents.merchant_agent import _floor_price
+    floor, evidence_path = _floor_price(tightened_policy, qty=10)
+    assert floor == policy["list_price"] == 1000.0  # zero discount room -- full list price only, NOT 780.00
+    assert evidence_path == "policy.qty_breaks[0].discount_pct"  # this tier still "wins" the max() -- just at 0%
+
+    # Buyer is willing to pay full list price -- otherwise this negotiation
+    # round-caps to REJECTED, which is also a valid "normal outcome" but
+    # less useful to demonstrate the approval-gate behavior with here.
+    buyer = BuyerAgent(qty=10, opening_discount_pct=15, max_acceptable_price=policy["list_price"], list_price=policy["list_price"])
+    approval_calls = []
+
+    def _approve(message):
+        approval_calls.append(message)
+        return True
+
+    outcome = run_full_transaction(
+        policy, buyer, audit_path=str(audit_path), payment_client=SpyClient(),
+        product=product, catalog_path=None, approval_confirm=_approve,
+        buyer_id="BUYER-BRAND-NEW-3", orders=orders,
+    )
+
+    assert outcome["state"] == "COMPLETED"
+    assert outcome["offer"]["price"] == policy["list_price"]  # settled at full list price, no discount
+    assert len(approval_calls) == 1  # human-approval still forced, same as MODERATE
+    assert outcome["offer"]["price"] * outcome["offer"]["qty"] < policy["transaction_approval_threshold"]
+
+    entries = _read_log(audit_path)
+    risk_entry = next(e for e in entries if e["action"] == "risk_review")
+    assert "new buyer" in risk_entry["rationale"]
+    assert "large request" in risk_entry["rationale"]
+    # The rationale states the ACTUAL, freshly-recomputed effective floor
+    # in the same line as the "no negotiation room" claim -- not just a
+    # generic assertion -- so a future regression in the qty_breaks-zeroing
+    # would show up here directly (e.g. "780.00" instead of "1000.00").
+    assert "Effective floor for this negotiation: 1000.00" in risk_entry["rationale"]
+    approval_entry = next(e for e in entries if e["action"] == "approval_requested")
+    assert "high" in approval_entry["rationale"].lower()
+    assert approval_entry["evidence_paths"] == ["risk_agent.risk_level"]
+    assert any(e["action"] == "offer" for e in entries)  # negotiation DID proceed normally -- offers were made
+
+
+def test_established_buyer_normal_qty_proceeds_completely_unaffected(tmp_path):
+    """Requirement #5's second explicit case: an established buyer with
+    normal order history proceeds exactly as if the Risk Agent didn't
+    exist -- risk_level "none" produces byte-identical behavior to
+    omitting buyer_id/orders entirely (the pre-Milestone-5 default)."""
+    product = _demo_product("SKU-RISK-002", current_inventory=50)
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = [{"buyer_id": "BUYER-ESTABLISHED", "amount": 500.0} for _ in range(5)]  # well-established
+
+    def _run(audit_path, **kwargs):
+        buyer = BuyerAgent(qty=3, opening_discount_pct=15, max_acceptable_price=1000.0, list_price=policy["list_price"])
+        return run_negotiation(policy, buyer, audit_path=str(audit_path), **kwargs)
+
+    with_risk_check = _run(tmp_path / "with_risk.log", buyer_id="BUYER-ESTABLISHED", orders=orders)
+    without_risk_check = _run(tmp_path / "without_risk.log")  # pre-Milestone-5 default -- no buyer_id/orders at all
+
+    assert with_risk_check["state"] == "AGREEMENT_RECORDED"
+    assert with_risk_check["risk_level"] == "none"
+    # Identical outcome either way -- the risk check made zero difference.
+    # (offer_id/expiration/timestamp are freshly generated per call, so
+    # compare the negotiated terms, not full dict/offer_id equality.)
+    assert with_risk_check["state"] == without_risk_check["state"]
+    assert with_risk_check["offer"]["price"] == without_risk_check["offer"]["price"]
+    assert with_risk_check["offer"]["qty"] == without_risk_check["offer"]["qty"]
+
+
+def test_moderate_risk_logs_but_does_not_gate_or_restrict_pricing(tmp_path):
+    """Follow-up (2026-09-02, Section 2O, confirmed with the user): drops
+    forced human-approval from MODERATE risk entirely. MODERATE (exactly
+    one factor -- here, new_buyer alone, since qty stays below the
+    large-request threshold) now proceeds with ZERO added friction: no
+    approval gate, no discount restriction -- but still logs a
+    risk_review audit entry naming the single factor, so it stays
+    visible/explainable without adding friction. Distinct from HIGH
+    (both factors), which still forces the gate AND caps
+    max_discount_pct to 0 -- see
+    test_high_risk_forces_list_price_only_and_still_requires_human_approval
+    below."""
+    audit_path = tmp_path / "negotiation.log"
+    product = _demo_product("SKU-RISK-003", current_inventory=50, cost=10.0, min_price=15.0)
+    product["list_price"] = 20.0
+    product["max_discount_pct"] = 5
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = []  # new buyer -- the sole risk factor here (qty=1 stays below the large-request threshold)
+
+    buyer = BuyerAgent(qty=1, opening_discount_pct=5, max_acceptable_price=20.0, list_price=policy["list_price"])
+    approval_calls = []
+
+    def _approve(message):
+        approval_calls.append(message)
+        return True
+
+    outcome = run_full_transaction(
+        policy, buyer, audit_path=str(audit_path), payment_client=SpyClient(),
+        product=product, catalog_path=None, approval_confirm=_approve,
+        buyer_id="BUYER-BRAND-NEW-2", orders=orders,
+    )
+
+    assert outcome["state"] == "COMPLETED"
+    assert approval_calls == []  # the gate was NEVER triggered -- zero added friction
+    # Normal discount still fully available -- NOT forced to list_price
+    # (that's HIGH-only behavior). max_discount_pct=5% -> floor 19.00,
+    # below list_price (20.00).
+    expected_floor = round(policy["list_price"] * (1 - policy["max_discount_pct"] / 100), 2)
+    assert expected_floor < policy["list_price"]
+    assert outcome["offer"]["price"] == expected_floor
+
+    entries = _read_log(audit_path)
+    assert not any(e["action"] == "approval_requested" for e in entries)  # gate never fired at all
+    risk_entry = next(e for e in entries if e["action"] == "risk_review")
+    assert "new buyer" in risk_entry["rationale"]
+    assert "large request" not in risk_entry["rationale"]  # only the one factor is present
+    assert risk_entry["evidence_paths"] == ["buyer.order_history"]
 
 
 def test_qty_exceeding_inventory_routes_to_rollback_without_calling_payment_service(tmp_path):
