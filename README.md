@@ -117,37 +117,49 @@ python scripts/reset_data.py
 
 ## Running a negotiation
 
-```bash
-python -m src.negotiation_loop
-```
-
-Runs the hardcoded demo product from `merchant_policy.json` with a
-scripted (non-AI) buyer and rules-only merchant, negotiation phase only
-(no payment, since no `PRODUCT_ID`/Razorpay-flavored demo is implied by
-default). Configure via environment variables, all optional:
-
-| Variable | Values | Effect |
-|---|---|---|
-| `PRODUCT_ID` | e.g. `SKU-ELEC-001` | Negotiate a real synthetic-catalog product instead of the hardcoded demo. Requires `data/catalog.json` (see above). Also enables the inventory fulfillment check and post-sale decrement. |
-| `BUYER_ID` | e.g. `BUYER-001` | Uses that buyer's real persona/budget and LTV-based discount bonus from `data/buyers.json`/`orders.json`. |
-| `BUYER_BUDGET` | a number | Overrides the buyer's max acceptable price / persona budget directly. |
-| `BUYER_MODE` | `scripted` (default) or `ai` | `ai` uses `AIBuyerAgent` (Gemini-driven); needs `GEMINI_API_KEY`. |
-| `MERCHANT_MODE` | `rules` (default) or `ai` | `ai` adds the Layer 2 Gemini strategy layer on top of the same Layer 1 guardrails; needs `GEMINI_API_KEY`. |
-
-The full pipeline -- negotiation through to a real Razorpay test-mode
-payment -- runs automatically in one command whenever both
-`RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are set; no separate manual
-step is needed to trigger payment after agreement:
+> **Note:** running with no `PRODUCT_ID` uses a minimal fixture product
+> for a fast smoke test and does **NOT** exercise the catalog, LTV, or
+> liquidation systems. For the full system, always pass `PRODUCT_ID` and
+> `BUYER_ID` -- see the example below.
 
 ```bash
 PRODUCT_ID=SKU-ELEC-001 BUYER_ID=BUYER-001 BUYER_MODE=ai MERCHANT_MODE=ai python -m src.negotiation_loop
 ```
+
+This negotiates a real synthetic-catalog product (`SKU-ELEC-001`) against
+a real buyer persona with its LTV-based discount bonus (`BUYER-001`),
+both AI-driven -- exercising the full personalization stack (catalog,
+LTV, liquidation). The full pipeline -- negotiation through to a real
+Razorpay test-mode payment -- runs automatically in this same command
+whenever both `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are also set;
+no separate manual step is needed to trigger payment after agreement.
+
+Configure via environment variables, all optional:
+
+| Variable | Values | Effect |
+|---|---|---|
+| `PRODUCT_ID` | e.g. `SKU-ELEC-001` | Negotiate a real synthetic-catalog product. Requires `data/catalog.json` (see above). Also enables the inventory fulfillment check and post-sale decrement. Omit to fall back to the minimal `merchant_policy.json` fixture (smoke-test only -- see note above). |
+| `BUYER_ID` | e.g. `BUYER-001` | Uses that buyer's real persona/budget and LTV-based discount bonus from `data/buyers.json`/`orders.json`. |
+| `BUYER_BUDGET` | a number | Overrides the buyer's max acceptable price / persona budget directly. |
+| `BUYER_MODE` | `scripted` (default) or `ai` | `ai` uses `AIBuyerAgent` (Gemini-driven); needs `GEMINI_API_KEY`. |
+| `MERCHANT_MODE` | `rules` (default) or `ai` | `ai` adds the Layer 2 Gemini strategy layer on top of the same Layer 1 guardrails; needs `GEMINI_API_KEY`. |
 
 Console output streams each round live (`[Round N] agent: decision`),
 followed by a plain-language summary block for the final outcome
 (agreed price/qty, then `PAYMENT COMPLETED` with the Razorpay order id,
 or the specific `ROLLBACK` reason) -- readable without parsing the raw
 JSON dump that follows it.
+
+### Minimal smoke test (no data generation needed)
+
+```bash
+python -m src.negotiation_loop
+```
+
+Runs the fixture product from `merchant_policy.json` with a scripted
+(non-AI) buyer and rules-only merchant, negotiation phase only (no
+payment). Fastest way to sanity-check the negotiation loop itself with
+zero setup -- not a substitute for the catalog-driven run above.
 
 ### Triggering each failure mode on demand
 

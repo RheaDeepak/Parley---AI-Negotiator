@@ -481,6 +481,69 @@ def test_round_cap_enforcement_still_works_with_ai_merchant(tmp_path):
     assert all(e["guardrail_clamped"] is False for e in merchant_entries[:-1])
 
 
+def test_layer_2_cannot_counter_past_the_round_cap_when_the_final_offer_already_clears_the_floor(tmp_path):
+    """Regression test (live-run bug report, 2026-09-02): the round-cap
+    scenario above (test_round_cap_enforcement_still_works_with_ai_merchant)
+    never exercised this path -- its buyer's offer stays below the floor
+    for all 5 rounds, so guardrail_verdict is never "accept" mid-negotiation.
+    That test's assertions were already exact (== max_negotiation_rounds,
+    not <=); its COVERAGE was the gap, not its strictness.
+
+    Live-reproduced on SKU-ELEC-003 (PRODUCT_ID=SKU-ELEC-003,
+    BUYER_MODE=ai, MERCHANT_MODE=ai, BUYER_BUDGET=5500): at round 5 (the
+    final round), the buyer's offer (5500) already cleared the floor
+    (5093.53) -- check_guardrails() correctly computed "accept" -- but
+    Layer 2 proposed a counter (5550) anyway, holding out for more.
+    _validate_against_guardrails() only checked the counter's PRICE
+    against the floor, not whether countering at all was still legal at
+    the final round, so it passed straight through un-clamped. The buyer
+    then submitted an (illegal) round-6 offer, only THEN caught by
+    check_guardrails()'s round > max_rounds check -- one round too late.
+
+    Mirrors this with POLICY's real numbers: floor at qty=1 is 4399.12;
+    the buyer's round-5 offer lands exactly on it, while Layer 2 keeps
+    proposing a much higher counter (4999.0, comfortably above the floor,
+    so it would NOT be caught by the floor-clamp path either) every
+    single round, including the last."""
+    from src.agents.offer_utils import new_offer
+
+    class ScriptedBuyer:
+        """Full control over each round's offer, regardless of the
+        merchant's counter -- deterministic reproduction of the exact
+        live-run price trajectory, not a reactive strategy."""
+
+        def __init__(self, prices, qty=1):
+            self._prices = list(prices)
+            self._qty = qty
+
+        def initial_offer(self):
+            return new_offer(self._prices.pop(0), self._qty)
+
+        def respond_to_counter(self, counter_offer):
+            if not self._prices:
+                return {"accept": True, "offer": None}
+            return {"accept": False, "offer": new_offer(self._prices.pop(0), self._qty)}
+
+    # Rounds 1-4 stay below the floor (4399.12); round 5 lands exactly on
+    # it. A 6th price is included ONLY so the bug, if reintroduced, has
+    # something to submit -- it must never actually be reached/used.
+    buyer = ScriptedBuyer([4000.0, 4100.0, 4200.0, 4300.0, 4399.12, 9999.0])
+    merchant_evaluate = partial(evaluate_ai, llm_call=RepeatingMerchantLLM(_merchant_decision("counter", price=4999.0, qty=1)))
+
+    audit_path = tmp_path / "negotiation.log"
+    outcome = run_negotiation(POLICY, buyer, audit_path=str(audit_path), merchant_evaluate=merchant_evaluate)
+    entries = _read_log(audit_path)
+
+    assert outcome["state"] == "AGREEMENT_RECORDED"  # not REJECTED via an illegal round 6
+    assert outcome["offer"]["price"] == 4399.12
+
+    merchant_entries = [e for e in entries if e["agent"] == "merchant-agent"]
+    assert len(merchant_entries) == POLICY["max_negotiation_rounds"]  # exactly 5, never 6
+    assert merchant_entries[-1]["action"] == "accept"
+    assert merchant_entries[-1]["guardrail_clamped"] is True  # Layer 2's counter was overridden
+    assert "9999" not in json.dumps(entries)  # the 6th, illegal price was never even submitted
+
+
 # ---------------------------------------------------------------------------
 # Gemini failure falls back to rules-only, does not crash the negotiation.
 # ---------------------------------------------------------------------------

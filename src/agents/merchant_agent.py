@@ -313,6 +313,28 @@ def _validate_against_guardrails(strategy, guardrail_verdict, offer, policy, rou
         return result, True
 
     # strategy.action == "counter"
+    if guardrail_verdict["decision"] == "accept" and round >= policy["max_negotiation_rounds"]:
+        # Bug fix (2026-09-02): the offer already clears the floor
+        # (guardrail_verdict says "accept") and this is the LAST allowed
+        # round -- Layer 2 has no discretion to hold out for a better
+        # price here, since any counter necessarily requires a further
+        # round to resolve, which would exceed
+        # policy.max_negotiation_rounds. Before this fix, a counter here
+        # was validated only against the floor (never against the round
+        # cap), so it passed straight through -- pushing the buyer into
+        # an illegal round beyond the cap, where check_guardrails()'s
+        # `round > max_rounds` check would only THEN catch it and reject.
+        # Live-reproduced: SKU-ELEC-003, round 5 offer 5500 (above floor
+        # 5093.53) drew a counter at 5550 instead of an accept, forcing a
+        # round 6 that should never have existed. Force the accept Layer
+        # 1 already computed instead.
+        result = dict(guardrail_verdict)
+        result["rationale"] = (
+            result["rationale"] + " Layer 2 proposed a counter instead of accepting on the final round; "
+            "overridden -- a further round would exceed policy.max_negotiation_rounds."
+        )
+        return result, True
+
     if strategy.counter_offer is None:
         result = dict(guardrail_verdict)
         result["rationale"] = (

@@ -1025,6 +1025,136 @@ and/or the real effective floor via `merchant_agent._floor_price()`.
 
 ---
 
+## Section 2K — Bug fix: Layer 2 could counter past the round cap when the final offer already cleared the floor (2026-09-02)
+
+**Bug report:** a live run on `SKU-ELEC-003` (`BUYER_MODE=ai`,
+`MERCHANT_MODE=ai`, `BUYER_BUDGET=5500`) ran 6 rounds before terminating,
+not 5. Round 6's reject cited `"Round 6 exceeds
+policy.max_negotiation_rounds (5)"` — the round cap fired, but one round
+too late. Initially suspected as a round-counting off-by-one introduced
+by Milestone 4's `negotiation_loop.py` changes.
+
+**Investigation:** `run_negotiation()`'s loop and `check_guardrails()`'s
+`round > max_rounds` / `round >= max_rounds` comparisons were confirmed
+unaltered and correct — `test_round_cap_enforcement_still_works_with_ai_merchant`
+already asserts exact equality (`== max_negotiation_rounds`, not `<=`)
+and was passing. Four separate live reproductions (scripted+rules,
+ai+ai, and two on `merchant_policy.json`) all terminated correctly at
+round 5. The user then supplied the actual failing transcript, which
+revealed the real mechanism: at round 5, the buyer's offer (`5500`)
+already cleared the floor (`5093.53`) — `check_guardrails()` correctly
+computed `"accept"` — but Layer 2 (`decide_strategy()`) proposed a
+`counter` at `5550` anyway, holding out for a better price.
+`_validate_against_guardrails()`'s counter-handling branch only checks a
+proposed counter's *price* against the floor; it has no rule for whether
+countering at all is still legal on the *final* round, where any counter
+necessarily requires a round beyond the cap to resolve. The counter
+passed straight through un-clamped, the buyer submitted a 6th (illegal)
+offer, and only THEN did `check_guardrails()`'s `round > max_rounds`
+check catch it — one round late.
+
+This is **not** a Milestone 4 regression: `_validate_against_guardrails()`
+has been unchanged since Section 2B (Milestone 3b); Milestone 4's diff
+never touched `merchant_agent.py`. It's a pre-existing design gap that
+simply had never been exercised before — `test_round_cap_enforcement_still_works_with_ai_merchant`'s
+buyer never reaches the floor at all, so `guardrail_verdict["decision"]`
+is never `"accept"` mid-negotiation in that test; the gap needed a buyer
+whose offer crosses the floor at or near the final round specifically.
+
+**Fix** (`merchant_agent._validate_against_guardrails()`):
+
+```python
+# strategy.action == "counter"
+if guardrail_verdict["decision"] == "accept" and round >= policy["max_negotiation_rounds"]:
+    # The offer already clears the floor and this is the LAST allowed
+    # round -- Layer 2 has no discretion to hold out here, since any
+    # counter would require a round beyond the cap to resolve.
+    result = dict(guardrail_verdict)
+    result["rationale"] = (
+        result["rationale"] + " Layer 2 proposed a counter instead of accepting on the final round; "
+        "overridden -- a further round would exceed policy.max_negotiation_rounds."
+    )
+    return result, True
+
+if strategy.counter_offer is None:
+    ...
+```
+
+Placed before the existing `strategy.counter_offer is None` check, so it
+applies regardless of whether Layer 2's proposed counter was well-formed.
+On earlier rounds, Layer 2 keeps its existing discretion to hold out for
+more even when the current offer already clears the floor (legitimate
+merchant strategy) — this only removes that discretion on the round
+where holding out is no longer possible to honor.
+
+**Verification:**
+- Directly re-ran the exact live-run scenario through `evaluate_ai()`:
+  round 5, offer `5500`, Layer 2 proposing counter `5550` — now correctly
+  returns `"accept"` at `5500`, `guardrail_clamped: true`.
+- Live-verified end-to-end with the user's exact reproduction command
+  (`PRODUCT_ID=SKU-ELEC-003 BUYER_MODE=ai MERCHANT_MODE=ai BUYER_BUDGET=5500`):
+  negotiation now correctly closes at round 5 with `AGREEMENT_RECORDED`,
+  no round 6.
+- `test_round_cap_enforcement_still_works_with_ai_merchant` re-run and
+  still passes — confirmed its assertions were already exact
+  (`== max_negotiation_rounds`); the gap was scenario coverage, not
+  assertion looseness, so it was left as-is (it correctly covers a
+  different, valid scenario: a buyer that never reaches the floor).
+- Added `test_layer_2_cannot_counter_past_the_round_cap_when_the_final_offer_already_clears_the_floor`
+  (`test_ai_merchant_agent.py`) — a dedicated end-to-end test for the
+  scenario the existing test didn't cover: buyer offers stay below the
+  floor for rounds 1-4 and land exactly on it at round 5, while Layer 2
+  keeps proposing a much higher counter every round including the last.
+  Confirmed this test fails (`REJECTED` instead of `AGREEMENT_RECORDED`)
+  against the pre-fix code and passes against the fix, by temporarily
+  reverting the fix and re-running it.
+- Full suite: 81 passed, 3 skipped, zero regressions (up from 80 passed
+  pre-fix).
+
+---
+
+## Section 2L — Fix: FORCE_INSUFFICIENT_INVENTORY console box showed the real (irrelevant) stock number (2026-09-02)
+
+**Bug report:** the `FORCE_INSUFFICIENT_INVENTORY` demo flag (Section 4,
+Milestone 4) correctly staged the `ROLLBACK`, but its console box showed
+`"Requested: 3, In stock: 138"` — real `current_inventory`, which is
+almost always well above `qty` (that's the entire reason to force this
+scenario rather than deplete real catalog data). The state was right;
+the displayed scenario wasn't believable.
+
+**Fix:** `run_full_transaction()` now computes `simulated_stock = max(0,
+qty - 1)` for the STAGED case only (never for a genuine shortfall, where
+real `current_inventory` is already believably low by definition), and
+returns it on the outcome dict as `"simulated_stock"`.
+`_print_insufficient_inventory_summary()` displays
+`outcome.get("simulated_stock", product["current_inventory"])` — the
+simulated number when staged, the real one when genuine. `qty - 1` is
+always a believable near-miss regardless of the negotiated quantity,
+including `qty=1` (`simulated_stock=0`).
+
+The audit log stays fully honest throughout — untouched by this fix's
+console-only concern: the `insufficient_inventory` rationale already
+named the real `current_inventory` truthfully alongside the staged
+label, and now also names the simulated number for clarity, e.g.:
+
+> `"Insufficient inventory staged via FORCE_INSUFFICIENT_INVENTORY for SKU-ELEC-002 (simulated stock 2; real current_inventory is actually 60, qty 3); rolling back before any payment call."`
+
+Real `current_inventory` in `catalog.json` was never touched by this
+flag before this fix and still isn't — only the *displayed* number
+changed.
+
+**Verification:**
+- Live-verified: `FORCE_INSUFFICIENT_INVENTORY=1` now shows `"Requested: 3, In stock: 2"` — internally consistent.
+- Added `test_force_insufficient_inventory_reports_a_believable_simulated_stock_not_the_real_value`
+  and `test_real_shortfall_still_reports_actual_current_inventory_not_simulated`
+  (`test_personalization.py`) — confirm `simulated_stock` is `qty - 1`
+  and present only on the staged path, real `current_inventory` is
+  untouched, and the audit log names both the simulated and real values.
+- Full suite: 83 passed, 3 skipped, zero regressions (up from 81 passed
+  pre-fix).
+
+---
+
 ## Section 3 — State machine
 
 ### States

@@ -285,6 +285,68 @@ def test_qty_exceeding_inventory_routes_to_rollback_without_calling_payment_serv
     assert unchanged_catalog[0]["current_inventory"] == 2
 
 
+def test_force_insufficient_inventory_reports_a_believable_simulated_stock_not_the_real_value(tmp_path):
+    """Console-consistency follow-up (2026-09-02): FORCE_INSUFFICIENT_INVENTORY
+    stages the ROLLBACK correctly, but before this fix the console box
+    displayed the REAL current_inventory (almost always well above qty --
+    that's the whole point of forcing this rather than depleting real
+    catalog data), producing a nonsensical "Requested: 3, In stock: 138".
+    outcome["simulated_stock"] (qty - 1 -- always a believable near-miss,
+    even at qty=1) is what negotiation_loop._print_insufficient_inventory_summary()
+    now displays instead; real current_inventory must stay completely
+    untouched and truthfully reported in the audit log regardless."""
+    audit_path = tmp_path / "negotiation.log"
+    catalog_path = tmp_path / "catalog.json"
+    product = _demo_product("SKU-TEST-STAGED", current_inventory=138)  # plenty of real stock
+    catalog_path.write_text(json.dumps([product]), encoding="utf-8")
+
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    buyer = BuyerAgent(qty=3, opening_discount_pct=5, max_acceptable_price=1000.0, list_price=policy["list_price"])
+    client = SpyClient()
+
+    outcome = run_full_transaction(
+        policy, buyer, audit_path=str(audit_path), payment_client=client,
+        product=product, catalog_path=str(catalog_path), force_insufficient_inventory=True,
+    )
+
+    assert outcome["state"] == "ROLLBACK"
+    assert outcome["reason"] == "insufficient_inventory"
+    assert outcome["simulated_stock"] == 2  # qty(3) - 1 -- visibly below the requested qty
+    assert client.order.calls == []  # payment service never invoked
+
+    # Audit trail stays honest: names the real value even while staging.
+    entries = _read_log(audit_path)
+    insufficient_entry = next(e for e in entries if e["action"] == "insufficient_inventory")
+    assert "simulated stock 2" in insufficient_entry["rationale"]
+    assert "real current_inventory is actually 138" in insufficient_entry["rationale"]
+
+    # Real current_inventory is completely untouched.
+    unchanged_catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    assert unchanged_catalog[0]["current_inventory"] == 138
+
+
+def test_real_shortfall_still_reports_actual_current_inventory_not_simulated(tmp_path):
+    """Companion to the test above: a REAL shortfall (force_insufficient_inventory
+    not set) must NOT carry a simulated_stock key -- the real,
+    already-believable current_inventory is what
+    _print_insufficient_inventory_summary() falls back to displaying."""
+    audit_path = tmp_path / "negotiation.log"
+    catalog_path = tmp_path / "catalog.json"
+    product = _demo_product("SKU-TEST-REAL-SHORTFALL", current_inventory=2)  # buyer will ask for qty=3
+    catalog_path.write_text(json.dumps([product]), encoding="utf-8")
+
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    buyer = BuyerAgent(qty=3, opening_discount_pct=5, max_acceptable_price=1000.0, list_price=policy["list_price"])
+
+    outcome = run_full_transaction(
+        policy, buyer, audit_path=str(audit_path), payment_client=SpyClient(),
+        product=product, catalog_path=str(catalog_path),
+    )
+
+    assert outcome["state"] == "ROLLBACK"
+    assert "simulated_stock" not in outcome
+
+
 def test_qty_within_inventory_proceeds_to_payment_as_normal(tmp_path):
     audit_path = tmp_path / "negotiation.log"
     catalog_path = tmp_path / "catalog.json"

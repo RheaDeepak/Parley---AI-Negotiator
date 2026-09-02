@@ -240,12 +240,24 @@ def run_full_transaction(
 
     real_inventory_shortfall = product is not None and not personalization.check_inventory_sufficient(product, qty)
     if product is not None and (force_insufficient_inventory or real_inventory_shortfall):
+        # Simulated stock for the STAGED case only (2026-09-02 follow-up):
+        # real current_inventory is almost always well above qty (that's
+        # the whole point of forcing this scenario instead of depleting
+        # real catalog data), so displaying it alongside "Requested: qty"
+        # reads as nonsensical ("Requested: 3, In stock: 138"). Always
+        # exactly one below qty -- a believable near-miss for any qty,
+        # including qty=1 (simulated_stock=0) -- and used ONLY for
+        # display; real current_inventory is never touched or misreported
+        # as fact anywhere in the audit log (see reason_desc below, which
+        # still states the real value truthfully).
+        simulated_stock = max(0, qty - 1)
         if real_inventory_shortfall:
             reason_desc = f"Negotiated qty {qty} exceeds current_inventory {product['current_inventory']} for {product['sku_id']}"
         else:
             reason_desc = (
                 f"Insufficient inventory staged via FORCE_INSUFFICIENT_INVENTORY for {product['sku_id']} "
-                f"(real current_inventory is actually {product['current_inventory']}, qty {qty})"
+                f"(simulated stock {simulated_stock}; real current_inventory is actually "
+                f"{product['current_inventory']}, qty {qty})"
             )
         _log(
             on_event, None, "merchant-agent", "insufficient_inventory", offer,
@@ -255,11 +267,14 @@ def run_full_transaction(
         _log(
             on_event, None, "merchant-agent", "human_notification", offer,
             f"ALERT: agreed deal for {qty}x {product['sku_id']} cannot be fulfilled "
-            f"({'only ' + str(product['current_inventory']) + ' in stock' if real_inventory_shortfall else 'insufficient-inventory scenario staged for demo'}). "
+            f"({'only ' + str(product['current_inventory']) + ' in stock' if real_inventory_shortfall else f'only {simulated_stock} in stock (simulated for demo)'}). "
             "Manual review required.",
             [], path=audit_path,
         )
-        return {"state": "ROLLBACK", "offer": offer, "payment": None, "reason": "insufficient_inventory"}
+        result = {"state": "ROLLBACK", "offer": offer, "payment": None, "reason": "insufficient_inventory"}
+        if not real_inventory_shortfall:
+            result["simulated_stock"] = simulated_stock
+        return result
 
     _log(
         on_event, None, "merchant-agent", "inventory_hold", offer,
@@ -354,12 +369,21 @@ def _print_insufficient_inventory_summary(outcome, product):
     call was ever made here. Every checklist line is true by construction:
     run_full_transaction()'s insufficient-inventory branch always logs
     insufficient_inventory then human_notification together, and never
-    reaches payment_service at all."""
+    reaches payment_service at all.
+
+    2026-09-02 follow-up: for a REAL shortfall, product['current_inventory']
+    IS the meaningful "in stock" number and is already < qty by
+    definition. For a FORCE_INSUFFICIENT_INVENTORY-staged one,
+    outcome["simulated_stock"] (always exactly qty - 1, set by
+    run_full_transaction()) is shown instead -- real current_inventory is
+    almost always well above qty in that case, so displaying it here
+    would read as nonsensical ("Requested: 3, In stock: 138")."""
     offer = outcome["offer"]
+    displayed_stock = outcome.get("simulated_stock", product["current_inventory"])
     _print_box("INSUFFICIENT INVENTORY - ROLLBACK", [
         f"Product:   {product['sku_id']} ({product['product_name']})",
         f"Requested: {offer['qty']}",
-        f"In stock:  {product['current_inventory']}",
+        f"In stock:  {displayed_stock}",
         "",
         "Checklist:",
         "  [x] No payment attempt was made",
