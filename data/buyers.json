@@ -1,0 +1,302 @@
+[
+  {
+    "buyer_id": "BUYER-001",
+    "persona": "Bargain Hunter",
+    "budget_range": {
+      "min": 2000,
+      "max": 6000
+    },
+    "category_affinity": "Books & Media",
+    "negotiation_style": "aggressive -- pushes hard for the lowest possible price"
+  },
+  {
+    "buyer_id": "BUYER-002",
+    "persona": "Loyal Regular",
+    "budget_range": {
+      "min": 4000,
+      "max": 12000
+    },
+    "category_affinity": "Apparel & Fashion",
+    "negotiation_style": "moderate -- fair but expects recognition for repeat business"
+  },
+  {
+    "buyer_id": "BUYER-003",
+    "persona": "Bulk Buyer",
+    "budget_range": {
+      "min": 10000,
+      "max": 40000
+    },
+    "category_affinity": "Office & Stationery",
+    "negotiation_style": "moderate -- focused on quantity discounts over per-unit haggling"
+  },
+  {
+    "buyer_id": "BUYER-004",
+    "persona": "Window Shopper",
+    "budget_range": {
+      "min": 1000,
+      "max": 3000
+    },
+    "category_affinity": "Electronics",
+    "negotiation_style": "easygoing -- browses often, rarely pushes hard on price"
+  },
+  {
+    "buyer_id": "BUYER-005",
+    "persona": "Premium Customer",
+    "budget_range": {
+      "min": 8000,
+      "max": 25000
+    },
+    "category_affinity": "Electronics",
+    "negotiation_style": "easygoing -- values convenience and quality over discounts"
+  },
+  {
+    "buyer_id": "BUYER-006",
+    "persona": "Occasional Buyer",
+    "budget_range": {
+      "min": 1500,
+      "max": 5000
+    },
+    "category_affinity": "Beauty & Personal Care",
+    "negotiation_style": "moderate -- open to a fair discount but not desperate"
+  },
+  {
+    "buyer_id": "BUYER-007",
+    "persona": "Whale",
+    "budget_range": {
+      "min": 30000,
+      "max": 80000
+    },
+    "category_affinity": "Sporting Goods & Outdoors",
+    "negotiation_style": "moderate -- big spender, expects VIP-tier treatment"
+  },
+  {
+    "buyer_id": "BUYER-008",
+    "persona": "Stubborn Negotiator",
+    "budget_range": {
+      "min": 2000,
+      "max": 8000
+    },
+    "category_affinity": "Apparel & Fashion",
+    "negotiation_style": "aggressive -- anchors low and concedes very slowly"
+  },
+  {
+    "buyer_id": "BUYER-009",
+    "persona": "Bargain Hunter",
+    "budget_range": {
+      "min": 2000,
+      "max": 6000
+    },
+    "category_affinity": "Electronics",
+    "negotiation_style": "aggressive -- pushes hard for the lowest possible price"
+  },
+  {
+    "buyer_id": "BUYER-010",
+    "persona": "Loyal Regular",
+    "budget_range": {
+      "min": 4000,
+      "max": 12000
+    },
+    "category_affinity": "Electronics",
+    "negotiation_style": "moderate -- fair but expects recognition for repeat business"
+  },
+  {
+    "buyer_id": "BUYER-011",
+    "persona": "Bulk Buyer",
+    "budget_range": {
+      "min": 10000,
+      "max": 40000
+    },
+    "category_affinity": "Sporting Goods & Outdoors",
+    "negotiation_style": "moderate -- focused on quantity discounts over per-unit haggling"
+  },
+  {
+    "buyer_id": "BUYER-012",
+    "persona": "Window Shopper",
+    "budget_range": {
+      "min": 1000,
+      "max": 3000
+    },
+    "category_affinity": "Sporting Goods & Outdoors",
+    "negotiation_style": "easygoing -- browses often, rarely pushes hard on price"
+  },
+  {
+    "buyer_id": "BUYER-013",
+    "persona": "Premium Customer",
+    "budget_range": {
+      "min": 8000,
+      "max": 25000
+    },
+    "category_affinity": "Electronics",
+    "negotiation_style": "easygoing -- values convenience and quality over discounts"
+  },
+  {
+    "buyer_id": "BUYER-014",
+    "persona": "Occasional Buyer",
+    "budget_range": {
+      "min": 1500,
+      "max": 5000
+    },
+    "category_affinity": "Home & Kitchen",
+    "negotiation_style": "moderate -- open to a fair discount but not desperate"
+  },
+  {
+    "buyer_id": "BUYER-015",
+    "persona": "Whale",
+    "budget_range": {
+      "min": 30000,
+      "max": 80000
+    },
+    "category_affinity": "Sporting Goods & Outdoors",
+    "negotiation_style": "moderate -- big spender, expects VIP-tier treatment"
+  },
+  {
+    "buyer_id": "BUYER-016",
+    "persona": "Stubborn Negotiator",
+    "budget_range": {
+      "min": 2000,
+      "max": 8000
+    },
+    "category_affinity": "Home & Kitchen",
+    "negotiation_style": "aggressive -- anchors low and concedes very slowly"
+  },
+  {
+    "buyer_id": "BUYER-017",
+    "persona": "Bargain Hunter",
+    "budget_range": {
+      "min": 2000,
+      "max": 6000
+    },
+    "category_affinity": "Office & Stationery",
+    "negotiation_style": "aggressive -- pushes hard for the lowest possible price"
+  },
+  {
+    "buyer_id": "BUYER-018",
+    "persona": "Loyal Regular",
+    "budget_range": {
+      "min": 4000,
+      "max": 12000
+    },
+    "category_affinity": "Apparel & Fashion",
+    "negotiation_style": "moderate -- fair but expects recognition for repeat business"
+  },
+  {
+    "buyer_id": "BUYER-019",
+    "persona": "Bulk Buyer",
+    "budget_range": {
+      "min": 10000,
+      "max": 40000
+    },
+    "category_affinity": "Sporting Goods & Outdoors",
+    "negotiation_style": "moderate -- focused on quantity discounts over per-unit haggling"
+  },
+  {
+    "buyer_id": "BUYER-020",
+    "persona": "Window Shopper",
+    "budget_range": {
+      "min": 1000,
+      "max": 3000
+    },
+    "category_affinity": "Office & Stationery",
+    "negotiation_style": "easygoing -- browses often, rarely pushes hard on price"
+  },
+  {
+    "buyer_id": "BUYER-021",
+    "persona": "Premium Customer",
+    "budget_range": {
+      "min": 8000,
+      "max": 25000
+    },
+    "category_affinity": "Books & Media",
+    "negotiation_style": "easygoing -- values convenience and quality over discounts"
+  },
+  {
+    "buyer_id": "BUYER-022",
+    "persona": "Occasional Buyer",
+    "budget_range": {
+      "min": 1500,
+      "max": 5000
+    },
+    "category_affinity": "Beauty & Personal Care",
+    "negotiation_style": "moderate -- open to a fair discount but not desperate"
+  },
+  {
+    "buyer_id": "BUYER-023",
+    "persona": "Whale",
+    "budget_range": {
+      "min": 30000,
+      "max": 80000
+    },
+    "category_affinity": "Home & Kitchen",
+    "negotiation_style": "moderate -- big spender, expects VIP-tier treatment"
+  },
+  {
+    "buyer_id": "BUYER-024",
+    "persona": "Stubborn Negotiator",
+    "budget_range": {
+      "min": 2000,
+      "max": 8000
+    },
+    "category_affinity": "Apparel & Fashion",
+    "negotiation_style": "aggressive -- anchors low and concedes very slowly"
+  },
+  {
+    "buyer_id": "BUYER-025",
+    "persona": "Bargain Hunter",
+    "budget_range": {
+      "min": 2000,
+      "max": 6000
+    },
+    "category_affinity": "Home & Kitchen",
+    "negotiation_style": "aggressive -- pushes hard for the lowest possible price"
+  },
+  {
+    "buyer_id": "BUYER-026",
+    "persona": "Loyal Regular",
+    "budget_range": {
+      "min": 4000,
+      "max": 12000
+    },
+    "category_affinity": "Books & Media",
+    "negotiation_style": "moderate -- fair but expects recognition for repeat business"
+  },
+  {
+    "buyer_id": "BUYER-027",
+    "persona": "Bulk Buyer",
+    "budget_range": {
+      "min": 10000,
+      "max": 40000
+    },
+    "category_affinity": "Apparel & Fashion",
+    "negotiation_style": "moderate -- focused on quantity discounts over per-unit haggling"
+  },
+  {
+    "buyer_id": "BUYER-028",
+    "persona": "Window Shopper",
+    "budget_range": {
+      "min": 1000,
+      "max": 3000
+    },
+    "category_affinity": "Electronics",
+    "negotiation_style": "easygoing -- browses often, rarely pushes hard on price"
+  },
+  {
+    "buyer_id": "BUYER-029",
+    "persona": "Premium Customer",
+    "budget_range": {
+      "min": 8000,
+      "max": 25000
+    },
+    "category_affinity": "Books & Media",
+    "negotiation_style": "easygoing -- values convenience and quality over discounts"
+  },
+  {
+    "buyer_id": "BUYER-030",
+    "persona": "Occasional Buyer",
+    "budget_range": {
+      "min": 1500,
+      "max": 5000
+    },
+    "category_affinity": "Toys & Games",
+    "negotiation_style": "moderate -- open to a fair discount but not desperate"
+  }
+]

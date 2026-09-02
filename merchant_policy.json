@@ -1,0 +1,15 @@
+{
+  "sku_id": "SKU-DEMO-001",
+  "product_name": "Wireless Mechanical Keyboard",
+  "currency": "INR",
+  "list_price": 4999.00,
+  "min_price": 3799.00,
+  "max_discount_pct": 12,
+  "qty_breaks": [
+    { "min_qty": 10, "discount_pct": 18 },
+    { "min_qty": 25, "discount_pct": 24 }
+  ],
+  "max_negotiation_rounds": 5,
+  "transaction_approval_threshold": 20000,
+  "inventory_floor": 1
+}

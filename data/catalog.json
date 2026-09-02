@@ -1,0 +1,1842 @@
+[
+  {
+    "sku_id": "SKU-ELEC-001",
+    "product_name": "Wireless Mechanical Keyboard",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 9879.86,
+    "cost": 5483.34,
+    "min_price": 6305.84,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 31,
+    "inventory_floor": 3,
+    "days_in_inventory": 18
+  },
+  {
+    "sku_id": "SKU-ELEC-002",
+    "product_name": "Bluetooth Over-Ear Headphones",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 11317.48,
+    "cost": 7459.05,
+    "min_price": 8577.91,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 60,
+    "inventory_floor": 1,
+    "days_in_inventory": 12
+  },
+  {
+    "sku_id": "SKU-ELEC-003",
+    "product_name": "27-inch 4K Monitor",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 7976.05,
+    "cost": 4429.16,
+    "min_price": 5093.53,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 141,
+    "inventory_floor": 2,
+    "days_in_inventory": 379
+  },
+  {
+    "sku_id": "SKU-ELEC-004",
+    "product_name": "USB-C Hub Adapter",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 3930.26,
+    "cost": 2624.84,
+    "min_price": 3018.57,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 14
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 92,
+    "inventory_floor": 1,
+    "days_in_inventory": 55
+  },
+  {
+    "sku_id": "SKU-ELEC-005",
+    "product_name": "Portable SSD 1TB",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 3007.81,
+    "cost": 2230.12,
+    "min_price": 2564.64,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 29,
+    "inventory_floor": 1,
+    "days_in_inventory": 49
+  },
+  {
+    "sku_id": "SKU-ELEC-006",
+    "product_name": "Smart LED Desk Lamp",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 12834.42,
+    "cost": 8608.63,
+    "min_price": 9899.92,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 23
+      }
+    ],
+    "current_inventory": 36,
+    "inventory_floor": 2,
+    "days_in_inventory": 69
+  },
+  {
+    "sku_id": "SKU-ELEC-007",
+    "product_name": "Noise-Cancelling Earbuds",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 1918.96,
+    "cost": 1167.95,
+    "min_price": 1343.14,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 22
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 16,
+    "inventory_floor": 3,
+    "days_in_inventory": 9
+  },
+  {
+    "sku_id": "SKU-ELEC-008",
+    "product_name": "1080p Webcam",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 4036.16,
+    "cost": 2453.49,
+    "min_price": 2821.51,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 15
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 27
+      }
+    ],
+    "current_inventory": 102,
+    "inventory_floor": 1,
+    "days_in_inventory": 13
+  },
+  {
+    "sku_id": "SKU-ELEC-009",
+    "product_name": "15W Wireless Charging Pad",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 7238.43,
+    "cost": 5188.67,
+    "min_price": 5966.97,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 24
+      }
+    ],
+    "current_inventory": 73,
+    "inventory_floor": 3,
+    "days_in_inventory": 27
+  },
+  {
+    "sku_id": "SKU-ELEC-010",
+    "product_name": "2m HDMI Cable",
+    "category": "Electronics",
+    "currency": "INR",
+    "list_price": 14100.5,
+    "cost": 9582.8,
+    "min_price": 11020.22,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 27
+      }
+    ],
+    "current_inventory": 46,
+    "inventory_floor": 2,
+    "days_in_inventory": 32
+  },
+  {
+    "sku_id": "SKU-APRL-001",
+    "product_name": "Cotton Crew-Neck T-Shirt",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 1703.99,
+    "cost": 1274.42,
+    "min_price": 1465.58,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 63,
+    "inventory_floor": 1,
+    "days_in_inventory": 8
+  },
+  {
+    "sku_id": "SKU-APRL-002",
+    "product_name": "Slim-Fit Denim Jeans",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 3278.67,
+    "cost": 2066.33,
+    "min_price": 2376.28,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 15
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 59,
+    "inventory_floor": 3,
+    "days_in_inventory": 41
+  },
+  {
+    "sku_id": "SKU-APRL-003",
+    "product_name": "Wool-Blend Overcoat",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 2147.16,
+    "cost": 1560.85,
+    "min_price": 1794.98,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 68,
+    "inventory_floor": 3,
+    "days_in_inventory": 285
+  },
+  {
+    "sku_id": "SKU-APRL-004",
+    "product_name": "Running Sneakers",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 2377.06,
+    "cost": 1432.29,
+    "min_price": 1647.13,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 23
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 61,
+    "inventory_floor": 1,
+    "days_in_inventory": 47
+  },
+  {
+    "sku_id": "SKU-APRL-005",
+    "product_name": "Leather Belt",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 2185.25,
+    "cost": 1241.62,
+    "min_price": 1427.86,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 13
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 21
+      }
+    ],
+    "current_inventory": 45,
+    "inventory_floor": 3,
+    "days_in_inventory": 81
+  },
+  {
+    "sku_id": "SKU-APRL-006",
+    "product_name": "Zip-Up Hoodie",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 1861.99,
+    "cost": 1047.75,
+    "min_price": 1204.91,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 23
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 69,
+    "inventory_floor": 2,
+    "days_in_inventory": 68
+  },
+  {
+    "sku_id": "SKU-APRL-007",
+    "product_name": "Formal Dress Shirt",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 3484.88,
+    "cost": 1924.69,
+    "min_price": 2213.39,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 92,
+    "inventory_floor": 1,
+    "days_in_inventory": 35
+  },
+  {
+    "sku_id": "SKU-APRL-008",
+    "product_name": "Canvas Tote Bag",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 1385.95,
+    "cost": 806.11,
+    "min_price": 927.03,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 133,
+    "inventory_floor": 1,
+    "days_in_inventory": 34
+  },
+  {
+    "sku_id": "SKU-APRL-009",
+    "product_name": "Wool Beanie",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 2178.42,
+    "cost": 1244.49,
+    "min_price": 1431.16,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 22
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 55,
+    "inventory_floor": 1,
+    "days_in_inventory": 78
+  },
+  {
+    "sku_id": "SKU-APRL-010",
+    "product_name": "Ankle-Length Chino Trousers",
+    "category": "Apparel & Fashion",
+    "currency": "INR",
+    "list_price": 1683.48,
+    "cost": 980.31,
+    "min_price": 1127.36,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 9,
+    "inventory_floor": 1,
+    "days_in_inventory": 63
+  },
+  {
+    "sku_id": "SKU-HOME-001",
+    "product_name": "Stainless Steel Cookware Set",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 5588.77,
+    "cost": 4056.02,
+    "min_price": 4664.42,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 24
+      }
+    ],
+    "current_inventory": 150,
+    "inventory_floor": 1,
+    "days_in_inventory": 31
+  },
+  {
+    "sku_id": "SKU-HOME-002",
+    "product_name": "Non-Stick Frying Pan",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 696.79,
+    "cost": 450.96,
+    "min_price": 518.6,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 27
+      }
+    ],
+    "current_inventory": 37,
+    "inventory_floor": 3,
+    "days_in_inventory": 17
+  },
+  {
+    "sku_id": "SKU-HOME-003",
+    "product_name": "Electric Kettle",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 2956.64,
+    "cost": 1951.27,
+    "min_price": 2243.96,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 113,
+    "inventory_floor": 1,
+    "days_in_inventory": 495
+  },
+  {
+    "sku_id": "SKU-HOME-004",
+    "product_name": "Ceramic Dinner Set",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 5587.7,
+    "cost": 3917.27,
+    "min_price": 4504.86,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 100,
+    "inventory_floor": 2,
+    "days_in_inventory": 52
+  },
+  {
+    "sku_id": "SKU-HOME-005",
+    "product_name": "Memory Foam Pillow",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 5417.76,
+    "cost": 3468.98,
+    "min_price": 3989.33,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 23
+      }
+    ],
+    "current_inventory": 10,
+    "inventory_floor": 2,
+    "days_in_inventory": 44
+  },
+  {
+    "sku_id": "SKU-HOME-006",
+    "product_name": "Cotton Bedsheet Set",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 3412.74,
+    "cost": 2278.65,
+    "min_price": 2620.45,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 13
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 20,
+    "inventory_floor": 1,
+    "days_in_inventory": 81
+  },
+  {
+    "sku_id": "SKU-HOME-007",
+    "product_name": "Air-Tight Storage Container Set",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 590.92,
+    "cost": 328.72,
+    "min_price": 378.03,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 76,
+    "inventory_floor": 3,
+    "days_in_inventory": 31
+  },
+  {
+    "sku_id": "SKU-HOME-008",
+    "product_name": "Table Lamp",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 3015.4,
+    "cost": 1983.67,
+    "min_price": 2281.22,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 109,
+    "inventory_floor": 1,
+    "days_in_inventory": 61
+  },
+  {
+    "sku_id": "SKU-HOME-009",
+    "product_name": "Wall Clock",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 747.09,
+    "cost": 509.36,
+    "min_price": 585.76,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 18,
+    "inventory_floor": 3,
+    "days_in_inventory": 60
+  },
+  {
+    "sku_id": "SKU-HOME-010",
+    "product_name": "Blackout Curtain Pair",
+    "category": "Home & Kitchen",
+    "currency": "INR",
+    "list_price": 3990.04,
+    "cost": 2710.18,
+    "min_price": 3116.71,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 16
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 32,
+    "inventory_floor": 1,
+    "days_in_inventory": 44
+  },
+  {
+    "sku_id": "SKU-SPRT-001",
+    "product_name": "Yoga Mat",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 1775.24,
+    "cost": 1166.79,
+    "min_price": 1341.81,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 23
+      }
+    ],
+    "current_inventory": 123,
+    "inventory_floor": 1,
+    "days_in_inventory": 36
+  },
+  {
+    "sku_id": "SKU-SPRT-002",
+    "product_name": "Adjustable Dumbbell Set",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 7033.54,
+    "cost": 3974.49,
+    "min_price": 4570.66,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 14
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 8,
+    "inventory_floor": 1,
+    "days_in_inventory": 70
+  },
+  {
+    "sku_id": "SKU-SPRT-003",
+    "product_name": "Camping Tent (2-Person)",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 7433.03,
+    "cost": 5349.84,
+    "min_price": 6152.32,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 59,
+    "inventory_floor": 2,
+    "days_in_inventory": 423
+  },
+  {
+    "sku_id": "SKU-SPRT-004",
+    "product_name": "Insulated Water Bottle",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 7248.81,
+    "cost": 4225.53,
+    "min_price": 4859.36,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 16
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 78,
+    "inventory_floor": 2,
+    "days_in_inventory": 59
+  },
+  {
+    "sku_id": "SKU-SPRT-005",
+    "product_name": "Trekking Backpack",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 5663.75,
+    "cost": 3942.54,
+    "min_price": 4533.92,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 60,
+    "inventory_floor": 1,
+    "days_in_inventory": 38
+  },
+  {
+    "sku_id": "SKU-SPRT-006",
+    "product_name": "Resistance Band Set",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 4759.69,
+    "cost": 3133.97,
+    "min_price": 3604.07,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 127,
+    "inventory_floor": 2,
+    "days_in_inventory": 75
+  },
+  {
+    "sku_id": "SKU-SPRT-007",
+    "product_name": "Cycling Helmet",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 7379.28,
+    "cost": 4842.47,
+    "min_price": 5568.84,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 20
+      }
+    ],
+    "current_inventory": 22,
+    "inventory_floor": 2,
+    "days_in_inventory": 24
+  },
+  {
+    "sku_id": "SKU-SPRT-008",
+    "product_name": "Badminton Racquet Pair",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 823.3,
+    "cost": 594.72,
+    "min_price": 683.93,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 15,
+    "inventory_floor": 2,
+    "days_in_inventory": 32
+  },
+  {
+    "sku_id": "SKU-SPRT-009",
+    "product_name": "Sleeping Bag",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 931.27,
+    "cost": 634.64,
+    "min_price": 729.84,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 20
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 85,
+    "inventory_floor": 1,
+    "days_in_inventory": 86
+  },
+  {
+    "sku_id": "SKU-SPRT-010",
+    "product_name": "Football",
+    "category": "Sporting Goods & Outdoors",
+    "currency": "INR",
+    "list_price": 2345.23,
+    "cost": 1351.26,
+    "min_price": 1553.95,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 20
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 7,
+    "inventory_floor": 2,
+    "days_in_inventory": 10
+  },
+  {
+    "sku_id": "SKU-BOOK-001",
+    "product_name": "Bestselling Fiction Novel",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 988.56,
+    "cost": 655.02,
+    "min_price": 753.27,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 14
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 134,
+    "inventory_floor": 1,
+    "days_in_inventory": 28
+  },
+  {
+    "sku_id": "SKU-BOOK-002",
+    "product_name": "Illustrated Cookbook",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 328.82,
+    "cost": 203.8,
+    "min_price": 234.37,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 15
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 23
+      }
+    ],
+    "current_inventory": 45,
+    "inventory_floor": 2,
+    "days_in_inventory": 37
+  },
+  {
+    "sku_id": "SKU-BOOK-003",
+    "product_name": "Personal Finance Guide",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 1275.56,
+    "cost": 881.04,
+    "min_price": 1013.2,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 81,
+    "inventory_floor": 3,
+    "days_in_inventory": 541
+  },
+  {
+    "sku_id": "SKU-BOOK-004",
+    "product_name": "Children's Picture Book Set",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 289.84,
+    "cost": 210.32,
+    "min_price": 241.87,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 24
+      }
+    ],
+    "current_inventory": 44,
+    "inventory_floor": 1,
+    "days_in_inventory": 71
+  },
+  {
+    "sku_id": "SKU-BOOK-005",
+    "product_name": "Graphic Novel Collection",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 530.37,
+    "cost": 314.05,
+    "min_price": 361.16,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 72,
+    "inventory_floor": 2,
+    "days_in_inventory": 82
+  },
+  {
+    "sku_id": "SKU-BOOK-006",
+    "product_name": "Self-Help Bestseller",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 809.52,
+    "cost": 591.81,
+    "min_price": 680.58,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 13
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 75,
+    "inventory_floor": 1,
+    "days_in_inventory": 55
+  },
+  {
+    "sku_id": "SKU-BOOK-007",
+    "product_name": "History Non-Fiction Hardcover",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 154.79,
+    "cost": 109.01,
+    "min_price": 125.36,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 146,
+    "inventory_floor": 3,
+    "days_in_inventory": 57
+  },
+  {
+    "sku_id": "SKU-BOOK-008",
+    "product_name": "Puzzle & Brain Games Book",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 727.38,
+    "cost": 401.47,
+    "min_price": 461.69,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 14,
+    "inventory_floor": 1,
+    "days_in_inventory": 70
+  },
+  {
+    "sku_id": "SKU-BOOK-009",
+    "product_name": "Travel Guidebook",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 936.39,
+    "cost": 542.75,
+    "min_price": 624.16,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 15
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 24
+      }
+    ],
+    "current_inventory": 15,
+    "inventory_floor": 1,
+    "days_in_inventory": 47
+  },
+  {
+    "sku_id": "SKU-BOOK-010",
+    "product_name": "Poetry Anthology",
+    "category": "Books & Media",
+    "currency": "INR",
+    "list_price": 433.6,
+    "cost": 260.12,
+    "min_price": 299.14,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 16
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 27
+      }
+    ],
+    "current_inventory": 109,
+    "inventory_floor": 2,
+    "days_in_inventory": 72
+  },
+  {
+    "sku_id": "SKU-BEAU-001",
+    "product_name": "Vitamin C Face Serum",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 2286.01,
+    "cost": 1680.57,
+    "min_price": 1932.66,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 110,
+    "inventory_floor": 1,
+    "days_in_inventory": 23
+  },
+  {
+    "sku_id": "SKU-BEAU-002",
+    "product_name": "Electric Trimmer",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 661.18,
+    "cost": 485.9,
+    "min_price": 558.78,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 24
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 73,
+    "inventory_floor": 1,
+    "days_in_inventory": 32
+  },
+  {
+    "sku_id": "SKU-BEAU-003",
+    "product_name": "Hair Dryer",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 2394.02,
+    "cost": 1368.47,
+    "min_price": 1573.74,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 16
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 21
+      }
+    ],
+    "current_inventory": 122,
+    "inventory_floor": 1,
+    "days_in_inventory": 281
+  },
+  {
+    "sku_id": "SKU-BEAU-004",
+    "product_name": "Herbal Shampoo & Conditioner Set",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 1019.79,
+    "cost": 723.1,
+    "min_price": 831.56,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 23
+      }
+    ],
+    "current_inventory": 54,
+    "inventory_floor": 2,
+    "days_in_inventory": 85
+  },
+  {
+    "sku_id": "SKU-BEAU-005",
+    "product_name": "Moisturizing Body Lotion",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 1085.55,
+    "cost": 784.71,
+    "min_price": 902.42,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 107,
+    "inventory_floor": 3,
+    "days_in_inventory": 66
+  },
+  {
+    "sku_id": "SKU-BEAU-006",
+    "product_name": "Sunscreen SPF 50",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 2946.28,
+    "cost": 1936.42,
+    "min_price": 2226.88,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 13
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 72,
+    "inventory_floor": 1,
+    "days_in_inventory": 23
+  },
+  {
+    "sku_id": "SKU-BEAU-007",
+    "product_name": "Electric Toothbrush",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 458.95,
+    "cost": 292.31,
+    "min_price": 336.16,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 34,
+    "inventory_floor": 2,
+    "days_in_inventory": 66
+  },
+  {
+    "sku_id": "SKU-BEAU-008",
+    "product_name": "Perfume Eau de Parfum",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 2713.59,
+    "cost": 1595.63,
+    "min_price": 1834.97,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 23
+      }
+    ],
+    "current_inventory": 138,
+    "inventory_floor": 2,
+    "days_in_inventory": 1
+  },
+  {
+    "sku_id": "SKU-BEAU-009",
+    "product_name": "Facial Cleansing Brush",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 2107.54,
+    "cost": 1555.48,
+    "min_price": 1788.8,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 18
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 89,
+    "inventory_floor": 2,
+    "days_in_inventory": 9
+  },
+  {
+    "sku_id": "SKU-BEAU-010",
+    "product_name": "Lip Balm Set",
+    "category": "Beauty & Personal Care",
+    "currency": "INR",
+    "list_price": 1044.66,
+    "cost": 751.74,
+    "min_price": 864.5,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 109,
+    "inventory_floor": 1,
+    "days_in_inventory": 86
+  },
+  {
+    "sku_id": "SKU-TOYS-001",
+    "product_name": "Building Block Set",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 1527.92,
+    "cost": 930.7,
+    "min_price": 1070.31,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 16
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 102,
+    "inventory_floor": 3,
+    "days_in_inventory": 86
+  },
+  {
+    "sku_id": "SKU-TOYS-002",
+    "product_name": "Remote-Control Car",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 2668.84,
+    "cost": 1560.75,
+    "min_price": 1794.86,
+    "max_discount_pct": 12,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 20
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 82,
+    "inventory_floor": 1,
+    "days_in_inventory": 1
+  },
+  {
+    "sku_id": "SKU-TOYS-003",
+    "product_name": "Board Game (Family Edition)",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 893.6,
+    "cost": 631.91,
+    "min_price": 726.7,
+    "max_discount_pct": 13,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 59,
+    "inventory_floor": 2,
+    "days_in_inventory": 333
+  },
+  {
+    "sku_id": "SKU-TOYS-004",
+    "product_name": "Plush Teddy Bear",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 1761.51,
+    "cost": 1286.32,
+    "min_price": 1479.27,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 20
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 136,
+    "inventory_floor": 3,
+    "days_in_inventory": 37
+  },
+  {
+    "sku_id": "SKU-TOYS-005",
+    "product_name": "Jigsaw Puzzle (1000-piece)",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 2288.7,
+    "cost": 1412.21,
+    "min_price": 1624.04,
+    "max_discount_pct": 11,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 21
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 25
+      }
+    ],
+    "current_inventory": 55,
+    "inventory_floor": 1,
+    "days_in_inventory": 29
+  },
+  {
+    "sku_id": "SKU-TOYS-006",
+    "product_name": "Kids' Art & Craft Kit",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 280.6,
+    "cost": 168.07,
+    "min_price": 193.28,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 24
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 121,
+    "inventory_floor": 2,
+    "days_in_inventory": 10
+  },
+  {
+    "sku_id": "SKU-TOYS-007",
+    "product_name": "Action Figure Set",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 3124.25,
+    "cost": 2078.05,
+    "min_price": 2389.76,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 22
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 42,
+    "inventory_floor": 3,
+    "days_in_inventory": 32
+  },
+  {
+    "sku_id": "SKU-TOYS-008",
+    "product_name": "Educational STEM Kit",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 2469.15,
+    "cost": 1798.85,
+    "min_price": 2068.68,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 137,
+    "inventory_floor": 2,
+    "days_in_inventory": 23
+  },
+  {
+    "sku_id": "SKU-TOYS-009",
+    "product_name": "Card Game Deck",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 365.72,
+    "cost": 219.37,
+    "min_price": 252.28,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 17
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 140,
+    "inventory_floor": 2,
+    "days_in_inventory": 60
+  },
+  {
+    "sku_id": "SKU-TOYS-010",
+    "product_name": "Ride-On Toy Car",
+    "category": "Toys & Games",
+    "currency": "INR",
+    "list_price": 2164.99,
+    "cost": 1602.11,
+    "min_price": 1842.43,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 24
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 114,
+    "inventory_floor": 2,
+    "days_in_inventory": 65
+  },
+  {
+    "sku_id": "SKU-OFFC-001",
+    "product_name": "Ergonomic Office Chair",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 1170.19,
+    "cost": 680.85,
+    "min_price": 782.98,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 23
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 75,
+    "inventory_floor": 2,
+    "days_in_inventory": 32
+  },
+  {
+    "sku_id": "SKU-OFFC-002",
+    "product_name": "A4 Notebook Pack",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 1263.03,
+    "cost": 755.1,
+    "min_price": 868.37,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 20
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 65,
+    "inventory_floor": 1,
+    "days_in_inventory": 37
+  },
+  {
+    "sku_id": "SKU-OFFC-003",
+    "product_name": "Gel Pen Set",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 906.03,
+    "cost": 660.14,
+    "min_price": 759.16,
+    "max_discount_pct": 9,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 15
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 103,
+    "inventory_floor": 3,
+    "days_in_inventory": 329
+  },
+  {
+    "sku_id": "SKU-OFFC-004",
+    "product_name": "Desk Organizer",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 466.73,
+    "cost": 276.67,
+    "min_price": 318.17,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 22
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 28
+      }
+    ],
+    "current_inventory": 124,
+    "inventory_floor": 2,
+    "days_in_inventory": 70
+  },
+  {
+    "sku_id": "SKU-OFFC-005",
+    "product_name": "Whiteboard (Small)",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 249.44,
+    "cost": 178.74,
+    "min_price": 205.55,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 23
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 102,
+    "inventory_floor": 2,
+    "days_in_inventory": 3
+  },
+  {
+    "sku_id": "SKU-OFFC-006",
+    "product_name": "Sticky Note Pack",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 114.15,
+    "cost": 70.81,
+    "min_price": 81.43,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 22
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 61,
+    "inventory_floor": 2,
+    "days_in_inventory": 70
+  },
+  {
+    "sku_id": "SKU-OFFC-007",
+    "product_name": "Laminator Machine",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 626.61,
+    "cost": 399.26,
+    "min_price": 459.15,
+    "max_discount_pct": 8,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 16
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 22
+      }
+    ],
+    "current_inventory": 108,
+    "inventory_floor": 3,
+    "days_in_inventory": 86
+  },
+  {
+    "sku_id": "SKU-OFFC-008",
+    "product_name": "Stapler & Punch Set",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 496.11,
+    "cost": 319.24,
+    "min_price": 367.13,
+    "max_discount_pct": 10,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 19
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 26
+      }
+    ],
+    "current_inventory": 105,
+    "inventory_floor": 2,
+    "days_in_inventory": 4
+  },
+  {
+    "sku_id": "SKU-OFFC-009",
+    "product_name": "Adjustable Laptop Stand",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 1454.54,
+    "cost": 807.88,
+    "min_price": 929.06,
+    "max_discount_pct": 14,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 20
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 30
+      }
+    ],
+    "current_inventory": 51,
+    "inventory_floor": 1,
+    "days_in_inventory": 60
+  },
+  {
+    "sku_id": "SKU-OFFC-010",
+    "product_name": "Cable Management Box",
+    "category": "Office & Stationery",
+    "currency": "INR",
+    "list_price": 724.38,
+    "cost": 445.83,
+    "min_price": 512.7,
+    "max_discount_pct": 15,
+    "qty_breaks": [
+      {
+        "min_qty": 10,
+        "discount_pct": 22
+      },
+      {
+        "min_qty": 25,
+        "discount_pct": 29
+      }
+    ],
+    "current_inventory": 76,
+    "inventory_floor": 2,
+    "days_in_inventory": 49
+  }
+]

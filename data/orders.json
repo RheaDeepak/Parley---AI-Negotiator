@@ -1,0 +1,1802 @@
+[
+  {
+    "order_id": "ORD-0123",
+    "buyer_id": "BUYER-028",
+    "product_id": "SKU-SPRT-003",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 20051.76,
+    "currency": "INR",
+    "timestamp": "2025-09-03T00:02:52Z"
+  },
+  {
+    "order_id": "ORD-0173",
+    "buyer_id": "BUYER-024",
+    "product_id": "SKU-APRL-007",
+    "category": "Apparel & Fashion",
+    "amount": 9284.22,
+    "currency": "INR",
+    "timestamp": "2025-09-06T07:23:18Z"
+  },
+  {
+    "order_id": "ORD-0035",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 1768.08,
+    "currency": "INR",
+    "timestamp": "2025-09-10T01:04:41Z"
+  },
+  {
+    "order_id": "ORD-0191",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-005",
+    "category": "Apparel & Fashion",
+    "amount": 4344.62,
+    "currency": "INR",
+    "timestamp": "2025-09-10T01:31:47Z"
+  },
+  {
+    "order_id": "ORD-0197",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-APRL-008",
+    "category": "Apparel & Fashion",
+    "amount": 2684.74,
+    "currency": "INR",
+    "timestamp": "2025-09-10T04:59:05Z"
+  },
+  {
+    "order_id": "ORD-0099",
+    "buyer_id": "BUYER-026",
+    "product_id": "SKU-BOOK-005",
+    "category": "Books & Media",
+    "amount": 2008.0,
+    "currency": "INR",
+    "timestamp": "2025-09-12T02:20:42Z"
+  },
+  {
+    "order_id": "ORD-0029",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 2283.3,
+    "currency": "INR",
+    "timestamp": "2025-09-12T16:13:31Z"
+  },
+  {
+    "order_id": "ORD-0060",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-006",
+    "category": "Home & Kitchen",
+    "amount": 13389.64,
+    "currency": "INR",
+    "timestamp": "2025-09-13T22:36:13Z"
+  },
+  {
+    "order_id": "ORD-0177",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-BEAU-009",
+    "category": "Beauty & Personal Care",
+    "amount": 1884.18,
+    "currency": "INR",
+    "timestamp": "2025-09-17T00:18:14Z"
+  },
+  {
+    "order_id": "ORD-0101",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-002",
+    "category": "Home & Kitchen",
+    "amount": 1967.55,
+    "currency": "INR",
+    "timestamp": "2025-09-25T12:12:10Z"
+  },
+  {
+    "order_id": "ORD-0064",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-010",
+    "category": "Office & Stationery",
+    "amount": 1268.38,
+    "currency": "INR",
+    "timestamp": "2025-09-30T16:02:18Z"
+  },
+  {
+    "order_id": "ORD-0011",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 27726.15,
+    "currency": "INR",
+    "timestamp": "2025-10-03T05:58:14Z"
+  },
+  {
+    "order_id": "ORD-0105",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-ELEC-008",
+    "category": "Electronics",
+    "amount": 14730.36,
+    "currency": "INR",
+    "timestamp": "2025-10-06T22:15:51Z"
+  },
+  {
+    "order_id": "ORD-0103",
+    "buyer_id": "BUYER-030",
+    "product_id": "SKU-TOYS-008",
+    "category": "Toys & Games",
+    "amount": 11615.05,
+    "currency": "INR",
+    "timestamp": "2025-10-08T12:24:36Z"
+  },
+  {
+    "order_id": "ORD-0018",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-009",
+    "category": "Apparel & Fashion",
+    "amount": 9720.65,
+    "currency": "INR",
+    "timestamp": "2025-10-09T00:58:16Z"
+  },
+  {
+    "order_id": "ORD-0183",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-003",
+    "category": "Apparel & Fashion",
+    "amount": 9598.5,
+    "currency": "INR",
+    "timestamp": "2025-10-09T20:16:54Z"
+  },
+  {
+    "order_id": "ORD-0039",
+    "buyer_id": "BUYER-029",
+    "product_id": "SKU-BOOK-007",
+    "category": "Books & Media",
+    "amount": 417.09,
+    "currency": "INR",
+    "timestamp": "2025-10-10T14:56:29Z"
+  },
+  {
+    "order_id": "ORD-0004",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-001",
+    "category": "Office & Stationery",
+    "amount": 4556.0,
+    "currency": "INR",
+    "timestamp": "2025-10-10T23:41:36Z"
+  },
+  {
+    "order_id": "ORD-0111",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-003",
+    "category": "Office & Stationery",
+    "amount": 3202.4,
+    "currency": "INR",
+    "timestamp": "2025-10-12T00:40:06Z"
+  },
+  {
+    "order_id": "ORD-0094",
+    "buyer_id": "BUYER-030",
+    "product_id": "SKU-TOYS-010",
+    "category": "Toys & Games",
+    "amount": 6298.68,
+    "currency": "INR",
+    "timestamp": "2025-10-12T16:35:16Z"
+  },
+  {
+    "order_id": "ORD-0120",
+    "buyer_id": "BUYER-011",
+    "product_id": "SKU-SPRT-005",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 10911.12,
+    "currency": "INR",
+    "timestamp": "2025-10-14T04:51:21Z"
+  },
+  {
+    "order_id": "ORD-0083",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-008",
+    "category": "Home & Kitchen",
+    "amount": 8570.25,
+    "currency": "INR",
+    "timestamp": "2025-10-15T07:29:54Z"
+  },
+  {
+    "order_id": "ORD-0091",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-ELEC-007",
+    "category": "Electronics",
+    "amount": 5103.69,
+    "currency": "INR",
+    "timestamp": "2025-10-18T21:41:44Z"
+  },
+  {
+    "order_id": "ORD-0056",
+    "buyer_id": "BUYER-020",
+    "product_id": "SKU-OFFC-003",
+    "category": "Office & Stationery",
+    "amount": 3605.0,
+    "currency": "INR",
+    "timestamp": "2025-10-19T00:42:01Z"
+  },
+  {
+    "order_id": "ORD-0020",
+    "buyer_id": "BUYER-014",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 24976.8,
+    "currency": "INR",
+    "timestamp": "2025-10-19T01:00:36Z"
+  },
+  {
+    "order_id": "ORD-0074",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-ELEC-005",
+    "category": "Electronics",
+    "amount": 13606.25,
+    "currency": "INR",
+    "timestamp": "2025-10-21T00:50:48Z"
+  },
+  {
+    "order_id": "ORD-0164",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-ELEC-002",
+    "category": "Electronics",
+    "amount": 32889.96,
+    "currency": "INR",
+    "timestamp": "2025-10-23T10:31:16Z"
+  },
+  {
+    "order_id": "ORD-0065",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-004",
+    "category": "Home & Kitchen",
+    "amount": 22058.56,
+    "currency": "INR",
+    "timestamp": "2025-10-25T13:57:13Z"
+  },
+  {
+    "order_id": "ORD-0115",
+    "buyer_id": "BUYER-018",
+    "product_id": "SKU-BOOK-005",
+    "category": "Books & Media",
+    "amount": 465.25,
+    "currency": "INR",
+    "timestamp": "2025-10-25T15:12:02Z"
+  },
+  {
+    "order_id": "ORD-0118",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 615.65,
+    "currency": "INR",
+    "timestamp": "2025-10-30T10:06:35Z"
+  },
+  {
+    "order_id": "ORD-0158",
+    "buyer_id": "BUYER-019",
+    "product_id": "SKU-TOYS-005",
+    "category": "Toys & Games",
+    "amount": 10445.6,
+    "currency": "INR",
+    "timestamp": "2025-11-01T22:29:29Z"
+  },
+  {
+    "order_id": "ORD-0032",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-ELEC-005",
+    "category": "Electronics",
+    "amount": 5177.72,
+    "currency": "INR",
+    "timestamp": "2025-11-03T10:30:44Z"
+  },
+  {
+    "order_id": "ORD-0132",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-002",
+    "category": "Home & Kitchen",
+    "amount": 1238.04,
+    "currency": "INR",
+    "timestamp": "2025-11-06T09:07:41Z"
+  },
+  {
+    "order_id": "ORD-0153",
+    "buyer_id": "BUYER-024",
+    "product_id": "SKU-APRL-010",
+    "category": "Apparel & Fashion",
+    "amount": 5879.64,
+    "currency": "INR",
+    "timestamp": "2025-11-09T05:36:23Z"
+  },
+  {
+    "order_id": "ORD-0009",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 21855.28,
+    "currency": "INR",
+    "timestamp": "2025-11-09T14:52:13Z"
+  },
+  {
+    "order_id": "ORD-0089",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-BOOK-006",
+    "category": "Books & Media",
+    "amount": 736.44,
+    "currency": "INR",
+    "timestamp": "2025-11-12T17:08:38Z"
+  },
+  {
+    "order_id": "ORD-0027",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-010",
+    "category": "Apparel & Fashion",
+    "amount": 1670.25,
+    "currency": "INR",
+    "timestamp": "2025-11-19T16:43:25Z"
+  },
+  {
+    "order_id": "ORD-0072",
+    "buyer_id": "BUYER-026",
+    "product_id": "SKU-BOOK-004",
+    "category": "Books & Media",
+    "amount": 1406.15,
+    "currency": "INR",
+    "timestamp": "2025-11-24T01:16:12Z"
+  },
+  {
+    "order_id": "ORD-0082",
+    "buyer_id": "BUYER-002",
+    "product_id": "SKU-OFFC-002",
+    "category": "Office & Stationery",
+    "amount": 3740.91,
+    "currency": "INR",
+    "timestamp": "2025-11-24T23:17:30Z"
+  },
+  {
+    "order_id": "ORD-0078",
+    "buyer_id": "BUYER-021",
+    "product_id": "SKU-BOOK-002",
+    "category": "Books & Media",
+    "amount": 633.38,
+    "currency": "INR",
+    "timestamp": "2025-11-26T14:52:52Z"
+  },
+  {
+    "order_id": "ORD-0025",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 2402.7,
+    "currency": "INR",
+    "timestamp": "2025-11-26T15:33:23Z"
+  },
+  {
+    "order_id": "ORD-0124",
+    "buyer_id": "BUYER-012",
+    "product_id": "SKU-SPRT-003",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 27647.52,
+    "currency": "INR",
+    "timestamp": "2025-11-28T08:47:14Z"
+  },
+  {
+    "order_id": "ORD-0084",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-SPRT-009",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 3231.2,
+    "currency": "INR",
+    "timestamp": "2025-11-30T04:29:41Z"
+  },
+  {
+    "order_id": "ORD-0095",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 16238.13,
+    "currency": "INR",
+    "timestamp": "2025-12-01T09:40:59Z"
+  },
+  {
+    "order_id": "ORD-0024",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-010",
+    "category": "Office & Stationery",
+    "amount": 1874.94,
+    "currency": "INR",
+    "timestamp": "2025-12-05T09:18:26Z"
+  },
+  {
+    "order_id": "ORD-0051",
+    "buyer_id": "BUYER-023",
+    "product_id": "SKU-HOME-009",
+    "category": "Home & Kitchen",
+    "amount": 2180.94,
+    "currency": "INR",
+    "timestamp": "2025-12-18T20:15:01Z"
+  },
+  {
+    "order_id": "ORD-0145",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-002",
+    "category": "Home & Kitchen",
+    "amount": 3315.85,
+    "currency": "INR",
+    "timestamp": "2025-12-19T08:26:30Z"
+  },
+  {
+    "order_id": "ORD-0160",
+    "buyer_id": "BUYER-024",
+    "product_id": "SKU-APRL-002",
+    "category": "Apparel & Fashion",
+    "amount": 16027.35,
+    "currency": "INR",
+    "timestamp": "2025-12-19T16:58:47Z"
+  },
+  {
+    "order_id": "ORD-0151",
+    "buyer_id": "BUYER-028",
+    "product_id": "SKU-ELEC-004",
+    "category": "Electronics",
+    "amount": 6864.14,
+    "currency": "INR",
+    "timestamp": "2025-12-23T20:58:55Z"
+  },
+  {
+    "order_id": "ORD-0062",
+    "buyer_id": "BUYER-029",
+    "product_id": "SKU-APRL-003",
+    "category": "Apparel & Fashion",
+    "amount": 7514.68,
+    "currency": "INR",
+    "timestamp": "2025-12-25T07:13:34Z"
+  },
+  {
+    "order_id": "ORD-0122",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-010",
+    "category": "Office & Stationery",
+    "amount": 616.56,
+    "currency": "INR",
+    "timestamp": "2025-12-26T01:25:55Z"
+  },
+  {
+    "order_id": "ORD-0068",
+    "buyer_id": "BUYER-030",
+    "product_id": "SKU-TOYS-007",
+    "category": "Toys & Games",
+    "amount": 8609.1,
+    "currency": "INR",
+    "timestamp": "2025-12-26T07:58:41Z"
+  },
+  {
+    "order_id": "ORD-0121",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-010",
+    "category": "Apparel & Fashion",
+    "amount": 6256.08,
+    "currency": "INR",
+    "timestamp": "2025-12-28T18:40:37Z"
+  },
+  {
+    "order_id": "ORD-0041",
+    "buyer_id": "BUYER-021",
+    "product_id": "SKU-BOOK-008",
+    "category": "Books & Media",
+    "amount": 652.59,
+    "currency": "INR",
+    "timestamp": "2026-01-03T13:07:48Z"
+  },
+  {
+    "order_id": "ORD-0127",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-005",
+    "category": "Apparel & Fashion",
+    "amount": 1990.23,
+    "currency": "INR",
+    "timestamp": "2026-01-04T03:03:31Z"
+  },
+  {
+    "order_id": "ORD-0152",
+    "buyer_id": "BUYER-023",
+    "product_id": "SKU-HOME-009",
+    "category": "Home & Kitchen",
+    "amount": 3196.3,
+    "currency": "INR",
+    "timestamp": "2026-01-08T18:52:17Z"
+  },
+  {
+    "order_id": "ORD-0077",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-TOYS-002",
+    "category": "Toys & Games",
+    "amount": 7702.14,
+    "currency": "INR",
+    "timestamp": "2026-01-09T13:03:17Z"
+  },
+  {
+    "order_id": "ORD-0150",
+    "buyer_id": "BUYER-012",
+    "product_id": "SKU-SPRT-005",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 11244.54,
+    "currency": "INR",
+    "timestamp": "2026-01-10T17:10:34Z"
+  },
+  {
+    "order_id": "ORD-0067",
+    "buyer_id": "BUYER-021",
+    "product_id": "SKU-TOYS-010",
+    "category": "Toys & Games",
+    "amount": 3728.46,
+    "currency": "INR",
+    "timestamp": "2026-01-12T04:54:18Z"
+  },
+  {
+    "order_id": "ORD-0110",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-ELEC-007",
+    "category": "Electronics",
+    "amount": 5411.82,
+    "currency": "INR",
+    "timestamp": "2026-01-14T13:34:48Z"
+  },
+  {
+    "order_id": "ORD-0171",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-003",
+    "category": "Apparel & Fashion",
+    "amount": 1993.69,
+    "currency": "INR",
+    "timestamp": "2026-01-18T01:04:14Z"
+  },
+  {
+    "order_id": "ORD-0154",
+    "buyer_id": "BUYER-022",
+    "product_id": "SKU-HOME-002",
+    "category": "Home & Kitchen",
+    "amount": 2387.36,
+    "currency": "INR",
+    "timestamp": "2026-01-19T11:30:59Z"
+  },
+  {
+    "order_id": "ORD-0087",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 1607.07,
+    "currency": "INR",
+    "timestamp": "2026-01-21T21:35:22Z"
+  },
+  {
+    "order_id": "ORD-0003",
+    "buyer_id": "BUYER-030",
+    "product_id": "SKU-BOOK-005",
+    "category": "Books & Media",
+    "amount": 2424.45,
+    "currency": "INR",
+    "timestamp": "2026-01-21T21:58:15Z"
+  },
+  {
+    "order_id": "ORD-0143",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-ELEC-009",
+    "category": "Electronics",
+    "amount": 31625.15,
+    "currency": "INR",
+    "timestamp": "2026-01-22T19:13:56Z"
+  },
+  {
+    "order_id": "ORD-0163",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-004",
+    "category": "Office & Stationery",
+    "amount": 1865.4,
+    "currency": "INR",
+    "timestamp": "2026-01-23T14:26:21Z"
+  },
+  {
+    "order_id": "ORD-0102",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-010",
+    "category": "Office & Stationery",
+    "amount": 3465.5,
+    "currency": "INR",
+    "timestamp": "2026-01-25T22:17:10Z"
+  },
+  {
+    "order_id": "ORD-0049",
+    "buyer_id": "BUYER-022",
+    "product_id": "SKU-SPRT-002",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 26240.44,
+    "currency": "INR",
+    "timestamp": "2026-01-26T23:16:50Z"
+  },
+  {
+    "order_id": "ORD-0172",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-009",
+    "category": "Office & Stationery",
+    "amount": 6786.3,
+    "currency": "INR",
+    "timestamp": "2026-01-29T15:17:33Z"
+  },
+  {
+    "order_id": "ORD-0040",
+    "buyer_id": "BUYER-023",
+    "product_id": "SKU-HOME-008",
+    "category": "Home & Kitchen",
+    "amount": 8588.34,
+    "currency": "INR",
+    "timestamp": "2026-02-02T12:29:07Z"
+  },
+  {
+    "order_id": "ORD-0013",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 4997.12,
+    "currency": "INR",
+    "timestamp": "2026-02-04T01:17:30Z"
+  },
+  {
+    "order_id": "ORD-0199",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 2261.3,
+    "currency": "INR",
+    "timestamp": "2026-02-06T00:11:49Z"
+  },
+  {
+    "order_id": "ORD-0162",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-BEAU-008",
+    "category": "Beauty & Personal Care",
+    "amount": 8055.87,
+    "currency": "INR",
+    "timestamp": "2026-02-08T03:07:10Z"
+  },
+  {
+    "order_id": "ORD-0048",
+    "buyer_id": "BUYER-022",
+    "product_id": "SKU-BEAU-005",
+    "category": "Beauty & Personal Care",
+    "amount": 5187.9,
+    "currency": "INR",
+    "timestamp": "2026-02-08T08:39:02Z"
+  },
+  {
+    "order_id": "ORD-0096",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-005",
+    "category": "Home & Kitchen",
+    "amount": 4708.11,
+    "currency": "INR",
+    "timestamp": "2026-02-10T11:38:12Z"
+  },
+  {
+    "order_id": "ORD-0149",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-TOYS-008",
+    "category": "Toys & Games",
+    "amount": 2338.05,
+    "currency": "INR",
+    "timestamp": "2026-02-11T10:26:00Z"
+  },
+  {
+    "order_id": "ORD-0119",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-002",
+    "category": "Office & Stationery",
+    "amount": 3472.59,
+    "currency": "INR",
+    "timestamp": "2026-02-11T16:06:14Z"
+  },
+  {
+    "order_id": "ORD-0184",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-005",
+    "category": "Office & Stationery",
+    "amount": 938.28,
+    "currency": "INR",
+    "timestamp": "2026-02-12T11:41:22Z"
+  },
+  {
+    "order_id": "ORD-0026",
+    "buyer_id": "BUYER-019",
+    "product_id": "SKU-SPRT-008",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 2418.09,
+    "currency": "INR",
+    "timestamp": "2026-02-13T12:59:01Z"
+  },
+  {
+    "order_id": "ORD-0063",
+    "buyer_id": "BUYER-026",
+    "product_id": "SKU-BOOK-001",
+    "category": "Books & Media",
+    "amount": 2680.29,
+    "currency": "INR",
+    "timestamp": "2026-02-14T06:17:30Z"
+  },
+  {
+    "order_id": "ORD-0061",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-005",
+    "category": "Home & Kitchen",
+    "amount": 10423.94,
+    "currency": "INR",
+    "timestamp": "2026-02-15T12:54:26Z"
+  },
+  {
+    "order_id": "ORD-0180",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-005",
+    "category": "Office & Stationery",
+    "amount": 241.93,
+    "currency": "INR",
+    "timestamp": "2026-02-16T16:40:55Z"
+  },
+  {
+    "order_id": "ORD-0161",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 2163.3,
+    "currency": "INR",
+    "timestamp": "2026-02-16T21:32:23Z"
+  },
+  {
+    "order_id": "ORD-0034",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-005",
+    "category": "Home & Kitchen",
+    "amount": 25219.6,
+    "currency": "INR",
+    "timestamp": "2026-02-17T00:12:30Z"
+  },
+  {
+    "order_id": "ORD-0052",
+    "buyer_id": "BUYER-017",
+    "product_id": "SKU-OFFC-005",
+    "category": "Office & Stationery",
+    "amount": 977.6,
+    "currency": "INR",
+    "timestamp": "2026-02-20T10:07:24Z"
+  },
+  {
+    "order_id": "ORD-0137",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-009",
+    "category": "Apparel & Fashion",
+    "amount": 1953.09,
+    "currency": "INR",
+    "timestamp": "2026-02-22T12:08:33Z"
+  },
+  {
+    "order_id": "ORD-0015",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-OFFC-001",
+    "category": "Office & Stationery",
+    "amount": 3169.23,
+    "currency": "INR",
+    "timestamp": "2026-02-23T05:12:44Z"
+  },
+  {
+    "order_id": "ORD-0157",
+    "buyer_id": "BUYER-010",
+    "product_id": "SKU-BOOK-008",
+    "category": "Books & Media",
+    "amount": 3628.4,
+    "currency": "INR",
+    "timestamp": "2026-02-26T07:10:09Z"
+  },
+  {
+    "order_id": "ORD-0006",
+    "buyer_id": "BUYER-013",
+    "product_id": "SKU-ELEC-010",
+    "category": "Electronics",
+    "amount": 68119.25,
+    "currency": "INR",
+    "timestamp": "2026-02-27T12:56:15Z"
+  },
+  {
+    "order_id": "ORD-0033",
+    "buyer_id": "BUYER-020",
+    "product_id": "SKU-OFFC-010",
+    "category": "Office & Stationery",
+    "amount": 1990.32,
+    "currency": "INR",
+    "timestamp": "2026-03-01T00:34:54Z"
+  },
+  {
+    "order_id": "ORD-0165",
+    "buyer_id": "BUYER-002",
+    "product_id": "SKU-TOYS-001",
+    "category": "Toys & Games",
+    "amount": 2945.3,
+    "currency": "INR",
+    "timestamp": "2026-03-01T04:25:23Z"
+  },
+  {
+    "order_id": "ORD-0021",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-APRL-004",
+    "category": "Apparel & Fashion",
+    "amount": 2225.19,
+    "currency": "INR",
+    "timestamp": "2026-03-01T07:05:47Z"
+  },
+  {
+    "order_id": "ORD-0081",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-006",
+    "category": "Home & Kitchen",
+    "amount": 3246.29,
+    "currency": "INR",
+    "timestamp": "2026-03-02T02:28:58Z"
+  },
+  {
+    "order_id": "ORD-0140",
+    "buyer_id": "BUYER-017",
+    "product_id": "SKU-OFFC-010",
+    "category": "Office & Stationery",
+    "amount": 1301.32,
+    "currency": "INR",
+    "timestamp": "2026-03-03T17:11:01Z"
+  },
+  {
+    "order_id": "ORD-0022",
+    "buyer_id": "BUYER-011",
+    "product_id": "SKU-SPRT-001",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 5278.65,
+    "currency": "INR",
+    "timestamp": "2026-03-04T12:45:31Z"
+  },
+  {
+    "order_id": "ORD-0159",
+    "buyer_id": "BUYER-021",
+    "product_id": "SKU-APRL-008",
+    "category": "Apparel & Fashion",
+    "amount": 3566.73,
+    "currency": "INR",
+    "timestamp": "2026-03-05T15:25:46Z"
+  },
+  {
+    "order_id": "ORD-0017",
+    "buyer_id": "BUYER-014",
+    "product_id": "SKU-HOME-004",
+    "category": "Home & Kitchen",
+    "amount": 9861.82,
+    "currency": "INR",
+    "timestamp": "2026-03-07T01:03:28Z"
+  },
+  {
+    "order_id": "ORD-0100",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 2388.44,
+    "currency": "INR",
+    "timestamp": "2026-03-09T09:38:12Z"
+  },
+  {
+    "order_id": "ORD-0193",
+    "buyer_id": "BUYER-007",
+    "product_id": "SKU-SPRT-010",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 6712.74,
+    "currency": "INR",
+    "timestamp": "2026-03-09T18:19:03Z"
+  },
+  {
+    "order_id": "ORD-0038",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-ELEC-010",
+    "category": "Electronics",
+    "amount": 53312.16,
+    "currency": "INR",
+    "timestamp": "2026-03-09T23:12:59Z"
+  },
+  {
+    "order_id": "ORD-0181",
+    "buyer_id": "BUYER-025",
+    "product_id": "SKU-BOOK-010",
+    "category": "Books & Media",
+    "amount": 1295.67,
+    "currency": "INR",
+    "timestamp": "2026-03-11T16:56:57Z"
+  },
+  {
+    "order_id": "ORD-0043",
+    "buyer_id": "BUYER-010",
+    "product_id": "SKU-ELEC-009",
+    "category": "Electronics",
+    "amount": 20486.1,
+    "currency": "INR",
+    "timestamp": "2026-03-12T14:17:32Z"
+  },
+  {
+    "order_id": "ORD-0196",
+    "buyer_id": "BUYER-014",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 10831.64,
+    "currency": "INR",
+    "timestamp": "2026-03-16T13:56:50Z"
+  },
+  {
+    "order_id": "ORD-0097",
+    "buyer_id": "BUYER-013",
+    "product_id": "SKU-TOYS-001",
+    "category": "Toys & Games",
+    "amount": 5908.16,
+    "currency": "INR",
+    "timestamp": "2026-03-18T07:43:28Z"
+  },
+  {
+    "order_id": "ORD-0190",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-ELEC-008",
+    "category": "Electronics",
+    "amount": 3778.2,
+    "currency": "INR",
+    "timestamp": "2026-03-24T14:55:25Z"
+  },
+  {
+    "order_id": "ORD-0116",
+    "buyer_id": "BUYER-015",
+    "product_id": "SKU-SPRT-003",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 6420.38,
+    "currency": "INR",
+    "timestamp": "2026-03-25T00:27:25Z"
+  },
+  {
+    "order_id": "ORD-0014",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-010",
+    "category": "Home & Kitchen",
+    "amount": 11024.34,
+    "currency": "INR",
+    "timestamp": "2026-03-25T04:33:03Z"
+  },
+  {
+    "order_id": "ORD-0042",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-TOYS-006",
+    "category": "Toys & Games",
+    "amount": 266.19,
+    "currency": "INR",
+    "timestamp": "2026-03-29T17:20:19Z"
+  },
+  {
+    "order_id": "ORD-0031",
+    "buyer_id": "BUYER-007",
+    "product_id": "SKU-OFFC-006",
+    "category": "Office & Stationery",
+    "amount": 208.62,
+    "currency": "INR",
+    "timestamp": "2026-03-30T11:41:21Z"
+  },
+  {
+    "order_id": "ORD-0195",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-ELEC-006",
+    "category": "Electronics",
+    "amount": 36825.72,
+    "currency": "INR",
+    "timestamp": "2026-04-01T14:20:41Z"
+  },
+  {
+    "order_id": "ORD-0028",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-002",
+    "category": "Home & Kitchen",
+    "amount": 1234.68,
+    "currency": "INR",
+    "timestamp": "2026-04-02T08:56:26Z"
+  },
+  {
+    "order_id": "ORD-0046",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-003",
+    "category": "Home & Kitchen",
+    "amount": 8272.32,
+    "currency": "INR",
+    "timestamp": "2026-04-02T11:21:22Z"
+  },
+  {
+    "order_id": "ORD-0113",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-010",
+    "category": "Apparel & Fashion",
+    "amount": 8007.0,
+    "currency": "INR",
+    "timestamp": "2026-04-04T05:11:26Z"
+  },
+  {
+    "order_id": "ORD-0108",
+    "buyer_id": "BUYER-017",
+    "product_id": "SKU-OFFC-002",
+    "category": "Office & Stationery",
+    "amount": 1184.68,
+    "currency": "INR",
+    "timestamp": "2026-04-06T02:21:53Z"
+  },
+  {
+    "order_id": "ORD-0008",
+    "buyer_id": "BUYER-027",
+    "product_id": "SKU-APRL-008",
+    "category": "Apparel & Fashion",
+    "amount": 2668.16,
+    "currency": "INR",
+    "timestamp": "2026-04-09T07:23:01Z"
+  },
+  {
+    "order_id": "ORD-0069",
+    "buyer_id": "BUYER-004",
+    "product_id": "SKU-ELEC-008",
+    "category": "Electronics",
+    "amount": 3574.35,
+    "currency": "INR",
+    "timestamp": "2026-04-10T02:42:21Z"
+  },
+  {
+    "order_id": "ORD-0126",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-002",
+    "category": "Office & Stationery",
+    "amount": 3547.98,
+    "currency": "INR",
+    "timestamp": "2026-04-10T16:28:20Z"
+  },
+  {
+    "order_id": "ORD-0146",
+    "buyer_id": "BUYER-006",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 893.0,
+    "currency": "INR",
+    "timestamp": "2026-04-14T07:31:33Z"
+  },
+  {
+    "order_id": "ORD-0010",
+    "buyer_id": "BUYER-011",
+    "product_id": "SKU-SPRT-005",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 15155.31,
+    "currency": "INR",
+    "timestamp": "2026-04-19T12:34:02Z"
+  },
+  {
+    "order_id": "ORD-0187",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-003",
+    "category": "Apparel & Fashion",
+    "amount": 1871.07,
+    "currency": "INR",
+    "timestamp": "2026-04-23T22:59:23Z"
+  },
+  {
+    "order_id": "ORD-0170",
+    "buyer_id": "BUYER-013",
+    "product_id": "SKU-ELEC-003",
+    "category": "Electronics",
+    "amount": 21879.57,
+    "currency": "INR",
+    "timestamp": "2026-04-26T18:26:26Z"
+  },
+  {
+    "order_id": "ORD-0135",
+    "buyer_id": "BUYER-015",
+    "product_id": "SKU-SPRT-010",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 6892.41,
+    "currency": "INR",
+    "timestamp": "2026-05-01T14:05:23Z"
+  },
+  {
+    "order_id": "ORD-0001",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-ELEC-010",
+    "category": "Electronics",
+    "amount": 67230.65,
+    "currency": "INR",
+    "timestamp": "2026-05-01T14:19:22Z"
+  },
+  {
+    "order_id": "ORD-0133",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-ELEC-010",
+    "category": "Electronics",
+    "amount": 27994.96,
+    "currency": "INR",
+    "timestamp": "2026-05-01T20:54:24Z"
+  },
+  {
+    "order_id": "ORD-0045",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-TOYS-003",
+    "category": "Toys & Games",
+    "amount": 763.43,
+    "currency": "INR",
+    "timestamp": "2026-05-02T16:13:59Z"
+  },
+  {
+    "order_id": "ORD-0144",
+    "buyer_id": "BUYER-026",
+    "product_id": "SKU-BOOK-006",
+    "category": "Books & Media",
+    "amount": 3472.25,
+    "currency": "INR",
+    "timestamp": "2026-05-03T00:17:20Z"
+  },
+  {
+    "order_id": "ORD-0169",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-008",
+    "category": "Home & Kitchen",
+    "amount": 14027.75,
+    "currency": "INR",
+    "timestamp": "2026-05-03T10:14:49Z"
+  },
+  {
+    "order_id": "ORD-0130",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-006",
+    "category": "Apparel & Fashion",
+    "amount": 3208.04,
+    "currency": "INR",
+    "timestamp": "2026-05-03T22:04:54Z"
+  },
+  {
+    "order_id": "ORD-0186",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-SPRT-006",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 4099.31,
+    "currency": "INR",
+    "timestamp": "2026-05-05T14:02:51Z"
+  },
+  {
+    "order_id": "ORD-0090",
+    "buyer_id": "BUYER-029",
+    "product_id": "SKU-BEAU-009",
+    "category": "Beauty & Personal Care",
+    "amount": 2000.93,
+    "currency": "INR",
+    "timestamp": "2026-05-07T05:07:08Z"
+  },
+  {
+    "order_id": "ORD-0175",
+    "buyer_id": "BUYER-018",
+    "product_id": "SKU-APRL-006",
+    "category": "Apparel & Fashion",
+    "amount": 8386.25,
+    "currency": "INR",
+    "timestamp": "2026-05-07T15:17:21Z"
+  },
+  {
+    "order_id": "ORD-0188",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-003",
+    "category": "Home & Kitchen",
+    "amount": 2617.81,
+    "currency": "INR",
+    "timestamp": "2026-05-08T13:21:13Z"
+  },
+  {
+    "order_id": "ORD-0012",
+    "buyer_id": "BUYER-006",
+    "product_id": "SKU-BEAU-009",
+    "category": "Beauty & Personal Care",
+    "amount": 4019.46,
+    "currency": "INR",
+    "timestamp": "2026-05-08T20:15:04Z"
+  },
+  {
+    "order_id": "ORD-0073",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-003",
+    "category": "Home & Kitchen",
+    "amount": 2913.8,
+    "currency": "INR",
+    "timestamp": "2026-05-09T00:19:52Z"
+  },
+  {
+    "order_id": "ORD-0047",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-002",
+    "category": "Apparel & Fashion",
+    "amount": 13010.52,
+    "currency": "INR",
+    "timestamp": "2026-05-09T13:05:30Z"
+  },
+  {
+    "order_id": "ORD-0037",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-001",
+    "category": "Home & Kitchen",
+    "amount": 10289.76,
+    "currency": "INR",
+    "timestamp": "2026-05-11T00:30:30Z"
+  },
+  {
+    "order_id": "ORD-0086",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-010",
+    "category": "Home & Kitchen",
+    "amount": 7842.92,
+    "currency": "INR",
+    "timestamp": "2026-05-12T08:18:52Z"
+  },
+  {
+    "order_id": "ORD-0070",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-005",
+    "category": "Apparel & Fashion",
+    "amount": 2178.02,
+    "currency": "INR",
+    "timestamp": "2026-05-13T15:08:47Z"
+  },
+  {
+    "order_id": "ORD-0055",
+    "buyer_id": "BUYER-019",
+    "product_id": "SKU-SPRT-008",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 2989.92,
+    "currency": "INR",
+    "timestamp": "2026-05-15T18:01:41Z"
+  },
+  {
+    "order_id": "ORD-0148",
+    "buyer_id": "BUYER-027",
+    "product_id": "SKU-APRL-007",
+    "category": "Apparel & Fashion",
+    "amount": 10161.69,
+    "currency": "INR",
+    "timestamp": "2026-05-18T05:56:15Z"
+  },
+  {
+    "order_id": "ORD-0189",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-010",
+    "category": "Apparel & Fashion",
+    "amount": 1583.76,
+    "currency": "INR",
+    "timestamp": "2026-05-21T17:19:01Z"
+  },
+  {
+    "order_id": "ORD-0200",
+    "buyer_id": "BUYER-021",
+    "product_id": "SKU-BOOK-006",
+    "category": "Books & Media",
+    "amount": 742.73,
+    "currency": "INR",
+    "timestamp": "2026-05-22T03:04:30Z"
+  },
+  {
+    "order_id": "ORD-0088",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-ELEC-004",
+    "category": "Electronics",
+    "amount": 10197.87,
+    "currency": "INR",
+    "timestamp": "2026-05-24T07:00:11Z"
+  },
+  {
+    "order_id": "ORD-0023",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 464.63,
+    "currency": "INR",
+    "timestamp": "2026-05-24T14:11:14Z"
+  },
+  {
+    "order_id": "ORD-0106",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-005",
+    "category": "Apparel & Fashion",
+    "amount": 6510.12,
+    "currency": "INR",
+    "timestamp": "2026-05-24T17:38:09Z"
+  },
+  {
+    "order_id": "ORD-0114",
+    "buyer_id": "BUYER-002",
+    "product_id": "SKU-SPRT-005",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 4967.46,
+    "currency": "INR",
+    "timestamp": "2026-05-30T21:37:38Z"
+  },
+  {
+    "order_id": "ORD-0142",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-TOYS-005",
+    "category": "Toys & Games",
+    "amount": 3917.66,
+    "currency": "INR",
+    "timestamp": "2026-06-01T19:30:44Z"
+  },
+  {
+    "order_id": "ORD-0019",
+    "buyer_id": "BUYER-022",
+    "product_id": "SKU-BEAU-006",
+    "category": "Beauty & Personal Care",
+    "amount": 5275.84,
+    "currency": "INR",
+    "timestamp": "2026-06-01T23:12:38Z"
+  },
+  {
+    "order_id": "ORD-0147",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-SPRT-010",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 8155.24,
+    "currency": "INR",
+    "timestamp": "2026-06-02T06:48:42Z"
+  },
+  {
+    "order_id": "ORD-0194",
+    "buyer_id": "BUYER-004",
+    "product_id": "SKU-ELEC-002",
+    "category": "Electronics",
+    "amount": 39651.84,
+    "currency": "INR",
+    "timestamp": "2026-06-04T01:05:21Z"
+  },
+  {
+    "order_id": "ORD-0117",
+    "buyer_id": "BUYER-004",
+    "product_id": "SKU-ELEC-006",
+    "category": "Electronics",
+    "amount": 23243.34,
+    "currency": "INR",
+    "timestamp": "2026-06-07T05:45:42Z"
+  },
+  {
+    "order_id": "ORD-0182",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-009",
+    "category": "Home & Kitchen",
+    "amount": 2174.43,
+    "currency": "INR",
+    "timestamp": "2026-06-09T08:53:20Z"
+  },
+  {
+    "order_id": "ORD-0005",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-ELEC-008",
+    "category": "Electronics",
+    "amount": 7388.78,
+    "currency": "INR",
+    "timestamp": "2026-06-11T23:28:04Z"
+  },
+  {
+    "order_id": "ORD-0174",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-004",
+    "category": "Apparel & Fashion",
+    "amount": 2295.59,
+    "currency": "INR",
+    "timestamp": "2026-06-12T12:26:21Z"
+  },
+  {
+    "order_id": "ORD-0125",
+    "buyer_id": "BUYER-012",
+    "product_id": "SKU-BOOK-006",
+    "category": "Books & Media",
+    "amount": 736.31,
+    "currency": "INR",
+    "timestamp": "2026-06-15T04:19:35Z"
+  },
+  {
+    "order_id": "ORD-0016",
+    "buyer_id": "BUYER-007",
+    "product_id": "SKU-SPRT-002",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 12622.84,
+    "currency": "INR",
+    "timestamp": "2026-06-15T12:09:12Z"
+  },
+  {
+    "order_id": "ORD-0085",
+    "buyer_id": "BUYER-025",
+    "product_id": "SKU-HOME-008",
+    "category": "Home & Kitchen",
+    "amount": 8599.08,
+    "currency": "INR",
+    "timestamp": "2026-06-15T14:34:04Z"
+  },
+  {
+    "order_id": "ORD-0107",
+    "buyer_id": "BUYER-027",
+    "product_id": "SKU-APRL-002",
+    "category": "Apparel & Fashion",
+    "amount": 2999.27,
+    "currency": "INR",
+    "timestamp": "2026-06-16T04:04:19Z"
+  },
+  {
+    "order_id": "ORD-0155",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-008",
+    "category": "Home & Kitchen",
+    "amount": 13459.85,
+    "currency": "INR",
+    "timestamp": "2026-06-17T16:51:57Z"
+  },
+  {
+    "order_id": "ORD-0080",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-002",
+    "category": "Apparel & Fashion",
+    "amount": 11872.56,
+    "currency": "INR",
+    "timestamp": "2026-06-17T21:17:38Z"
+  },
+  {
+    "order_id": "ORD-0109",
+    "buyer_id": "BUYER-015",
+    "product_id": "SKU-SPRT-007",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 21718.14,
+    "currency": "INR",
+    "timestamp": "2026-06-18T09:09:21Z"
+  },
+  {
+    "order_id": "ORD-0036",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-004",
+    "category": "Office & Stationery",
+    "amount": 2316.4,
+    "currency": "INR",
+    "timestamp": "2026-06-24T00:05:00Z"
+  },
+  {
+    "order_id": "ORD-0192",
+    "buyer_id": "BUYER-017",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 2718.45,
+    "currency": "INR",
+    "timestamp": "2026-06-27T23:11:33Z"
+  },
+  {
+    "order_id": "ORD-0167",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 2265.95,
+    "currency": "INR",
+    "timestamp": "2026-06-28T10:27:11Z"
+  },
+  {
+    "order_id": "ORD-0179",
+    "buyer_id": "BUYER-014",
+    "product_id": "SKU-HOME-004",
+    "category": "Home & Kitchen",
+    "amount": 15146.22,
+    "currency": "INR",
+    "timestamp": "2026-06-30T05:58:15Z"
+  },
+  {
+    "order_id": "ORD-0058",
+    "buyer_id": "BUYER-010",
+    "product_id": "SKU-BEAU-003",
+    "category": "Beauty & Personal Care",
+    "amount": 4123.58,
+    "currency": "INR",
+    "timestamp": "2026-06-30T12:20:37Z"
+  },
+  {
+    "order_id": "ORD-0098",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-004",
+    "category": "Home & Kitchen",
+    "amount": 23929.45,
+    "currency": "INR",
+    "timestamp": "2026-07-01T04:12:16Z"
+  },
+  {
+    "order_id": "ORD-0156",
+    "buyer_id": "BUYER-019",
+    "product_id": "SKU-SPRT-004",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 21634.2,
+    "currency": "INR",
+    "timestamp": "2026-07-01T14:51:37Z"
+  },
+  {
+    "order_id": "ORD-0075",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 1102.98,
+    "currency": "INR",
+    "timestamp": "2026-07-02T10:49:50Z"
+  },
+  {
+    "order_id": "ORD-0050",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-003",
+    "category": "Office & Stationery",
+    "amount": 807.67,
+    "currency": "INR",
+    "timestamp": "2026-07-03T19:23:28Z"
+  },
+  {
+    "order_id": "ORD-0079",
+    "buyer_id": "BUYER-023",
+    "product_id": "SKU-BEAU-001",
+    "category": "Beauty & Personal Care",
+    "amount": 10342.65,
+    "currency": "INR",
+    "timestamp": "2026-07-04T01:41:24Z"
+  },
+  {
+    "order_id": "ORD-0139",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 2348.64,
+    "currency": "INR",
+    "timestamp": "2026-07-04T12:16:36Z"
+  },
+  {
+    "order_id": "ORD-0168",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-001",
+    "category": "Apparel & Fashion",
+    "amount": 3111.4,
+    "currency": "INR",
+    "timestamp": "2026-07-05T07:40:33Z"
+  },
+  {
+    "order_id": "ORD-0002",
+    "buyer_id": "BUYER-006",
+    "product_id": "SKU-BEAU-005",
+    "category": "Beauty & Personal Care",
+    "amount": 5269.4,
+    "currency": "INR",
+    "timestamp": "2026-07-06T05:22:31Z"
+  },
+  {
+    "order_id": "ORD-0136",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-008",
+    "category": "Apparel & Fashion",
+    "amount": 5237.28,
+    "currency": "INR",
+    "timestamp": "2026-07-06T06:19:50Z"
+  },
+  {
+    "order_id": "ORD-0112",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-002",
+    "category": "Apparel & Fashion",
+    "amount": 9207.63,
+    "currency": "INR",
+    "timestamp": "2026-07-10T11:50:54Z"
+  },
+  {
+    "order_id": "ORD-0176",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-BEAU-010",
+    "category": "Beauty & Personal Care",
+    "amount": 3947.8,
+    "currency": "INR",
+    "timestamp": "2026-07-12T03:42:23Z"
+  },
+  {
+    "order_id": "ORD-0092",
+    "buyer_id": "BUYER-020",
+    "product_id": "SKU-OFFC-009",
+    "category": "Office & Stationery",
+    "amount": 2728.6,
+    "currency": "INR",
+    "timestamp": "2026-07-12T18:12:10Z"
+  },
+  {
+    "order_id": "ORD-0178",
+    "buyer_id": "BUYER-020",
+    "product_id": "SKU-BOOK-001",
+    "category": "Books & Media",
+    "amount": 2750.1,
+    "currency": "INR",
+    "timestamp": "2026-07-13T16:08:07Z"
+  },
+  {
+    "order_id": "ORD-0131",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-006",
+    "category": "Office & Stationery",
+    "amount": 328.44,
+    "currency": "INR",
+    "timestamp": "2026-07-15T01:09:15Z"
+  },
+  {
+    "order_id": "ORD-0076",
+    "buyer_id": "BUYER-014",
+    "product_id": "SKU-TOYS-008",
+    "category": "Toys & Games",
+    "amount": 12185.55,
+    "currency": "INR",
+    "timestamp": "2026-07-19T12:33:57Z"
+  },
+  {
+    "order_id": "ORD-0007",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-SPRT-005",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 16613.31,
+    "currency": "INR",
+    "timestamp": "2026-07-19T14:58:27Z"
+  },
+  {
+    "order_id": "ORD-0071",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-001",
+    "category": "Apparel & Fashion",
+    "amount": 8194.3,
+    "currency": "INR",
+    "timestamp": "2026-07-20T10:37:16Z"
+  },
+  {
+    "order_id": "ORD-0166",
+    "buyer_id": "BUYER-009",
+    "product_id": "SKU-ELEC-002",
+    "category": "Electronics",
+    "amount": 10054.32,
+    "currency": "INR",
+    "timestamp": "2026-07-21T06:25:12Z"
+  },
+  {
+    "order_id": "ORD-0141",
+    "buyer_id": "BUYER-012",
+    "product_id": "SKU-BEAU-008",
+    "category": "Beauty & Personal Care",
+    "amount": 2636.65,
+    "currency": "INR",
+    "timestamp": "2026-07-22T04:55:15Z"
+  },
+  {
+    "order_id": "ORD-0128",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-BEAU-009",
+    "category": "Beauty & Personal Care",
+    "amount": 5457.81,
+    "currency": "INR",
+    "timestamp": "2026-07-24T23:09:53Z"
+  },
+  {
+    "order_id": "ORD-0059",
+    "buyer_id": "BUYER-029",
+    "product_id": "SKU-BOOK-007",
+    "category": "Books & Media",
+    "amount": 151.35,
+    "currency": "INR",
+    "timestamp": "2026-07-28T00:23:49Z"
+  },
+  {
+    "order_id": "ORD-0138",
+    "buyer_id": "BUYER-002",
+    "product_id": "SKU-APRL-005",
+    "category": "Apparel & Fashion",
+    "amount": 2068.78,
+    "currency": "INR",
+    "timestamp": "2026-07-29T03:54:43Z"
+  },
+  {
+    "order_id": "ORD-0054",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-004",
+    "category": "Apparel & Fashion",
+    "amount": 10785.25,
+    "currency": "INR",
+    "timestamp": "2026-07-29T10:37:09Z"
+  },
+  {
+    "order_id": "ORD-0093",
+    "buyer_id": "BUYER-024",
+    "product_id": "SKU-APRL-003",
+    "category": "Apparel & Fashion",
+    "amount": 9130.0,
+    "currency": "INR",
+    "timestamp": "2026-07-30T08:55:29Z"
+  },
+  {
+    "order_id": "ORD-0129",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-007",
+    "category": "Office & Stationery",
+    "amount": 2700.05,
+    "currency": "INR",
+    "timestamp": "2026-08-04T01:52:32Z"
+  },
+  {
+    "order_id": "ORD-0134",
+    "buyer_id": "BUYER-012",
+    "product_id": "SKU-OFFC-005",
+    "category": "Office & Stationery",
+    "amount": 950.04,
+    "currency": "INR",
+    "timestamp": "2026-08-08T13:17:04Z"
+  },
+  {
+    "order_id": "ORD-0198",
+    "buyer_id": "BUYER-008",
+    "product_id": "SKU-APRL-008",
+    "category": "Apparel & Fashion",
+    "amount": 6025.2,
+    "currency": "INR",
+    "timestamp": "2026-08-09T09:46:27Z"
+  },
+  {
+    "order_id": "ORD-0104",
+    "buyer_id": "BUYER-020",
+    "product_id": "SKU-OFFC-009",
+    "category": "Office & Stationery",
+    "amount": 2660.38,
+    "currency": "INR",
+    "timestamp": "2026-08-10T21:36:29Z"
+  },
+  {
+    "order_id": "ORD-0066",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-ELEC-008",
+    "category": "Electronics",
+    "amount": 11503.38,
+    "currency": "INR",
+    "timestamp": "2026-08-15T02:26:05Z"
+  },
+  {
+    "order_id": "ORD-0057",
+    "buyer_id": "BUYER-012",
+    "product_id": "SKU-SPRT-002",
+    "category": "Sporting Goods & Outdoors",
+    "amount": 24334.84,
+    "currency": "INR",
+    "timestamp": "2026-08-19T13:55:53Z"
+  },
+  {
+    "order_id": "ORD-0185",
+    "buyer_id": "BUYER-003",
+    "product_id": "SKU-OFFC-008",
+    "category": "Office & Stationery",
+    "amount": 475.78,
+    "currency": "INR",
+    "timestamp": "2026-08-20T00:47:42Z"
+  },
+  {
+    "order_id": "ORD-0030",
+    "buyer_id": "BUYER-005",
+    "product_id": "SKU-BEAU-009",
+    "category": "Beauty & Personal Care",
+    "amount": 2008.71,
+    "currency": "INR",
+    "timestamp": "2026-08-24T19:28:30Z"
+  },
+  {
+    "order_id": "ORD-0044",
+    "buyer_id": "BUYER-016",
+    "product_id": "SKU-HOME-007",
+    "category": "Home & Kitchen",
+    "amount": 1652.88,
+    "currency": "INR",
+    "timestamp": "2026-08-26T06:32:12Z"
+  },
+  {
+    "order_id": "ORD-0053",
+    "buyer_id": "BUYER-014",
+    "product_id": "SKU-HOME-009",
+    "category": "Home & Kitchen",
+    "amount": 3386.5,
+    "currency": "INR",
+    "timestamp": "2026-08-28T06:48:47Z"
+  }
+]

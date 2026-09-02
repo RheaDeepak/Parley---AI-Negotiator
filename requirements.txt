@@ -1,0 +1,5 @@
+pytest
+razorpay
+anthropic
+pydantic
+google-genai

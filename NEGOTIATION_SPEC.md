@@ -1,0 +1,1714 @@
+# Negotiation Spec
+
+> Milestone 1 was generated via the `bmad-spec` skill, derived from
+> [`_bmad-output/specs/spec-negotiation/`](_bmad-output/specs/spec-negotiation/).
+> Per `CLAUDE.md`, the BMAD pipeline is not re-run unless explicitly asked,
+> so from Milestone 2 onward this file is the hand-maintained canonical
+> spec — the `_bmad-output/` folder is left as a historical snapshot of
+> Milestone 1's spec-genesis and is no longer kept in sync.
+
+## Why
+
+Parley competes in the Razorpay AI Buildathon's Agentic Commerce track,
+which mandates a buyer-agent and merchant-agent that negotiate under
+merchant-defined constraints and transact end-to-end, explainably. Milestone
+1 built the deterministic negotiation core; Milestone 2 wired that agreement
+into a test-mode Razorpay payment, with a human-approval gate and rollback
+handling. Milestone 3a replaced the scripted buyer with an LLM-driven one.
+Milestone 3b gives the merchant-agent a genuinely autonomous strategic
+layer on top of its existing hard guardrails — the guardrails stay exactly
+as strict as before; the LLM decides HOW to negotiate within whatever room
+they leave, and every proposal is re-validated in code before it can reach
+the buyer or the audit log. Milestone 3c adds synthetic scale (a product
+catalog, buyer profiles, historical orders) and two deterministic,
+non-LLM personalization behaviors on top: a loyalty (LTV) discount bonus
+and an inventory-aware fulfillment check — same "rules, not judgment"
+philosophy as the guardrails, just fed different bounded inputs.
+
+## Capabilities
+
+- **CAP-1** — A merchant-agent can evaluate a buyer's offer against
+  merchant policy and determine accept, counter, or reject, citing the
+  specific policy field that drove the decision.
+- **CAP-2** — A negotiation loop can drive a buyer-agent and merchant-agent
+  through rounds to a deterministic terminal state.
+- **CAP-3** — Every negotiation action is recorded as a structured,
+  hash-verifiable audit entry.
+- **CAP-4** — A recorded agreement can be settled through Razorpay
+  test-mode: a real order is created, and the payment outcome (success or
+  forced failure) carries the transaction to `COMPLETED` or `ROLLBACK`.
+- **CAP-5** — A transaction whose value (`agreed_price * qty`) exceeds
+  `policy.transaction_approval_threshold` pauses for explicit human
+  confirmation before any payment call is made.
+- **CAP-6** — A forced payment failure releases the simulated inventory
+  hold, records a `ROLLBACK` audit entry carrying the Razorpay error code,
+  and emits a `human_notification` event.
+- **CAP-7** — An LLM-driven buyer-agent can propose an opening offer and
+  react to merchant counters with plausible, monotonic concession
+  behavior, driven by a private (never-disclosed) target price and walk-
+  away price, as a drop-in alternative to the scripted buyer.
+- **CAP-8** — The AI buyer's private reasoning (target price, walk-away
+  price, strategy note) is recorded as its own audit entry, separate from
+  and never present inside the offer entry the merchant-agent evaluates.
+- **CAP-9** — An LLM-driven merchant strategy layer can decide how much to
+  concede, whether to hold firm, and how to frame a counter-offer within
+  the room the deterministic guardrails leave — genuine judgment, not
+  narration of an already-made decision.
+- **CAP-10** — Every Layer-2 (strategic) proposal is re-validated against
+  Layer 1 (`check_guardrails`) before it can reach the buyer or the audit
+  log; a violating proposal is clamped to the nearest guardrail-valid
+  value and the clamp is recorded, never passed through.
+- **CAP-11** — A buyer's historical order total (LTV) deterministically
+  raises the discount ceiling available to them in a specific negotiation,
+  never past an absolute hard ceiling regardless of how high LTV is — a
+  pure function, no LLM, feeding the existing guardrails as a bounded
+  input rather than changing how they're enforced.
+- **CAP-12** — Before payment is initiated, a negotiated quantity that
+  exceeds the product's current stock routes directly to `ROLLBACK` with
+  a distinct `insufficient_inventory` reason, without ever calling the
+  payment service; a `COMPLETED` order decrements stock by the ordered
+  quantity.
+- **CAP-13** — A payment failure is never automatically retried; retrying
+  requires a separate, explicit `retry_payment()` call bounded by the
+  original offer's own expiration, and the buyer-agent's side of the
+  failure is recorded in the audit trail as its own event, distinct from
+  the operator-facing notification.
+- **CAP-14** — A cost-derived minimum-margin floor takes priority over
+  `min_price`, `max_discount_pct`, and the LTV bonus combined — no buyer,
+  however loyal, can ever negotiate a price below it. Inventory that has
+  aged past a threshold relaxes `min_price` toward that same floor
+  (never below it), giving the merchant more room the longer stock sits.
+
+## Constraints
+
+- `check_guardrails()` (Layer 1) must be pure, deterministic, rule-based
+  Python with no LLM or network calls — this is the Milestone-1 `evaluate()`
+  logic, renamed and extended (Section 1's `inventory_floor`), unchanged in
+  strictness. `evaluate()` remains a backward-compatible alias for it.
+- Negotiation rounds are hard-capped at `policy.max_negotiation_rounds`
+  (default 5); exceeding it without agreement forces terminal state
+  `REJECTED`, never an unbounded loop.
+- Every accept/counter/reject decision must cite `evidence_paths` — dotted
+  paths into the policy object naming exactly which field drove it. A
+  decision with no `evidence_paths` is invalid.
+- `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` are read only from environment
+  variables, never hardcoded, and never appear in any log or audit entry —
+  including the key ID, which is withheld too even though it isn't secret.
+- Only real Razorpay test-mode API calls are used for order creation
+  (`orders.create`); no live/production payment endpoint is ever called.
+  Payment *capture* normally requires a browser checkout step Parley's CLI
+  flow has no way to drive, so the payment outcome (success or forced
+  failure) is simulated in-process rather than captured against a real
+  Razorpay payment — see Section 3A. This is a documented demo limitation,
+  not a hidden shortcut.
+- Audit entries for payment actions never carry the raw Razorpay API
+  request/response body — only the curated `payment` field subset in
+  Section 4A.
+- The AI buyer's `target_price` and `walk_away_price` are never included
+  in the `offer` object sent to (or evaluated by) the merchant-agent —
+  only in its own separate `buyer_strategy` audit entry (Section 4B).
+- The AI buyer never offers above its own `walk_away_price`, enforced in
+  code (not just prompted), regardless of what the model returns.
+- The Milestone-1 scripted `BuyerAgent` (`src/agents/buyer_agent.py`) is
+  unmodified and remains the default for fast, deterministic,
+  non-network tests.
+- No field of Layer 2's raw proposal (`MerchantDecision`) is ever written
+  to the returned result, the buyer, or the audit log unless it has
+  independently passed a `check_guardrails()`-equivalent check first —
+  the validation happens in code, never by trusting the prompt.
+  Architecturally, `evaluate_ai()` cannot skip this: it always calls
+  `check_guardrails()` itself and only ever returns a value built from
+  that verdict or from an explicitly-validated field of the proposal.
+- When a guardrail clamp occurs, the rejected raw value (and the LLM's
+  free-text `concession_reasoning`, which could echo it in prose) is never
+  written to the audit log — only which policy field it violated
+  (Section 4C). `concession_reasoning` is logged verbatim only when no
+  clamp was needed.
+- `check_guardrails()` remains the pure rules-only path and is the
+  MERCHANT_MODE=rules default/fallback — both for a mode-selection
+  failure and for a Gemini outage mid-negotiation (Section 2B).
+- The LTV-to-discount-bonus function (`src/personalization.py`) and the
+  inventory fulfillment check are both pure, deterministic, no-LLM code —
+  same philosophy as `check_guardrails()`. Nothing in Milestone 3c lets an
+  LLM decide a discount amount, an inventory limit, or an LTV tier.
+- The LTV bonus integrates with `check_guardrails()` **without modifying
+  it at all**: `apply_ltv_bonus()` returns a new policy dict with
+  `max_discount_pct` and each `qty_breaks` tier's `discount_pct` already
+  raised and capped; `check_guardrails()` just receives that dict like any
+  other policy — see Section 2C.
+- The hard discount ceiling (`personalization.HARD_DISCOUNT_CEILING_PCT`,
+  30%) applies independently to `max_discount_pct` and to every
+  `qty_breaks` tier — no combination of LTV tier and quantity tier can
+  ever produce an effective discount above it.
+
+## Non-goals
+
+- No live/production Razorpay payment calls, ever — test-mode only.
+- No real browser-based Razorpay Checkout flow — payment outcome is
+  simulated in-process (Section 3A), not captured against a real checkout
+  payment.
+- No real inventory/stock tracking for the default hardcoded
+  `merchant_policy.json` path — still just `inventory_floor` (a minimum
+  order quantity check, Section 1), no stock counter. The synthetic
+  catalog path (Milestone 3c, `PRODUCT_ID` set) is the one exception: it
+  *does* track real `current_inventory` for the fulfillment check and
+  decrements it on `COMPLETED` — see Section 3B. This narrows, not
+  reverses, the Milestone 2/3b non-goal.
+- No multi-SKU / multi-item cart negotiation.
+- No multi-agent buyer or merchant architecture — one LLM call per round
+  per side, not a pipeline of sub-agents.
+- No mid-negotiation quantity changes proposed by the AI merchant — a
+  Layer-2 counter always keeps the buyer's current `qty`; qty_break
+  incentives may only be *mentioned* in `terms`/reasoning, never enacted
+  as an actual qty change this round (see Section 2B).
+- No "suspicious buyer" or risk-based blocking logic — every profile in
+  `buyers.json` is treated as legitimate. The user's explicit exclusion,
+  deferred to a future milestone.
+
+---
+
+## Section 1 — Merchant policy schema
+
+`merchant_policy.json` at the repo root. One file, one product/SKU.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `sku_id` | string | yes | Plain string identifier for the product being negotiated. |
+| `product_name` | string | yes | Human-readable name, for rationale/audit text. |
+| `currency` | string | yes | ISO 4217 code. Milestone 1 assumes `"INR"`. |
+| `list_price` | number | yes | Reference price the offer is discounted against. |
+| `min_price` | number | yes | Absolute floor. Any offer price below this is rejected regardless of quantity. Must be `<= list_price`. |
+| `max_discount_pct` | number | yes | Base maximum discount off `list_price` (percentage), applied when no `qty_breaks` tier matches. |
+| `qty_breaks` | array of objects | yes (may be `[]`) | Quantity-tiered discount overrides — see below. |
+| `max_negotiation_rounds` | integer | yes | Hard cap on negotiation rounds (default demo value: `5`). |
+| `transaction_approval_threshold` | number | yes | If `agreed_price * qty` exceeds this (same currency/decimal units as `list_price`), the transaction pauses for human approval before payment — see Section 3A. |
+| `inventory_floor` | integer | no (default `1`) | Minimum order quantity the merchant will accept. Offers below it are rejected (`policy.inventory_floor`), independent of price. Not a stock counter — see Non-goals. Optional for backward compatibility with Milestone 1/2/3a policy fixtures. |
+
+### `qty_breaks` shape
+
+```json
+"qty_breaks": [
+  { "min_qty": 10, "discount_pct": 20 },
+  { "min_qty": 25, "discount_pct": 28 }
+]
+```
+
+- The merchant-agent selects the entry with the **largest `min_qty` that
+  is `<= offer.qty`**.
+- If no tier's `min_qty` is met, the base `max_discount_pct` applies.
+- The selected tier's `discount_pct` **overrides** (does not stack with)
+  `max_discount_pct`.
+- Effective floor price at a given quantity:
+  `max(min_price, list_price * (1 - applicable_discount_pct / 100))`.
+
+### Example (`merchant_policy.json` demo values)
+
+```json
+{
+  "sku_id": "SKU-DEMO-001",
+  "product_name": "Wireless Mechanical Keyboard",
+  "currency": "INR",
+  "list_price": 4999.00,
+  "min_price": 3799.00,
+  "max_discount_pct": 12,
+  "qty_breaks": [
+    { "min_qty": 10, "discount_pct": 18 },
+    { "min_qty": 25, "discount_pct": 24 }
+  ],
+  "max_negotiation_rounds": 5,
+  "transaction_approval_threshold": 20000,
+  "inventory_floor": 1
+}
+```
+
+At qty 1–9: floor = `max(3799, 4999*0.88)` = `4399.12`.
+At qty 10–24: floor = `max(3799, 4999*0.82)` = `4099.18`.
+At qty 25+: floor = `max(3799, 4999*0.76)` = `3799.24`.
+
+---
+
+## Section 1B — Synthetic data schemas (Milestone 3c)
+
+Generated by `scripts/generate_synthetic_data.py` (seeded, reproducible —
+`python scripts/generate_synthetic_data.py [--seed 42] [--output-dir data]`)
+into `data/catalog.json`, `data/buyers.json`, `data/orders.json`. An
+alternative to the single hardcoded `merchant_policy.json`/persona, wired
+into `negotiation_loop.py` via `PRODUCT_ID`/`BUYER_ID` — see Section 2D.
+80 products / 30 buyers / 200 orders, across 6 categories: Electronics,
+Apparel & Fashion, Home & Kitchen, Sporting Goods & Outdoors, Books &
+Media, Beauty & Personal Care, Toys & Games, Office & Stationery (the
+user's "broader general retail" choice).
+
+### `catalog.json` — one entry per product
+
+| Field | Type | Description |
+|---|---|---|
+| `sku_id` | string | Unique, e.g. `"SKU-ELEC-003"`. |
+| `product_name` | string | e.g. `"27-inch 4K Monitor"`. |
+| `category` | string | One of the 8 categories above. |
+| `currency` | string | `"INR"`. |
+| `list_price` | number | Reference price. |
+| `cost` | number | Merchant's cost — catalog-only, **not** part of the Section 1 negotiation policy schema. |
+| `min_price` | number | `cost * 1.15` — cost plus a 15% minimum acceptable margin. |
+| `max_discount_pct` | integer | Base discount cap, 8-15%. |
+| `qty_breaks` | array | Same shape as Section 1, 2 tiers, each ≤ the hard ceiling (Section 2C). |
+| `current_inventory` | integer | Real stock count — see Section 3B. Decremented on `COMPLETED`. |
+| `inventory_floor` | integer | Minimum order qty, 1-3 (Section 1's field, reused). |
+| `days_in_inventory` | integer | How long this product has sat unsold — see Section 2E. 1-90 for 72 products (recent, comfortably under every category's threshold). 8 designated outliers (one per category) get `category_threshold + 20..220` days — proportionate to that category's own threshold, not one shared flat range. |
+
+`min_price > cost` is a real, checked invariant (a merchant never sells
+below cost) — distinct from `min_price <= list_price` (Section 1).
+
+### `buyers.json` — one entry per buyer
+
+| Field | Type | Description |
+|---|---|---|
+| `buyer_id` | string | Unique, e.g. `"BUYER-016"`. |
+| `persona` | string | One of 8 labels (Bargain Hunter, Loyal Regular, Bulk Buyer, Window Shopper, Premium Customer, Occasional Buyer, Whale, Stubborn Negotiator). |
+| `budget_range` | object | `{min, max}`. `buyer_to_persona()` uses the midpoint as the concrete `persona.budget` AIBuyerAgent expects. |
+| `category_affinity` | string | One of the 8 categories — weights which category `orders.json` mostly buys from for this buyer. |
+| `negotiation_style` | string | Free text, e.g. `"aggressive -- pushes hard for the lowest possible price"` — same free-text shape as `AIBuyerAgent`'s existing `willingness_to_negotiate` (Section 2A). |
+
+### `orders.json` — ~200 historical orders, past 12 months
+
+| Field | Type | Description |
+|---|---|---|
+| `order_id` | string | Unique. |
+| `buyer_id` | string | References `buyers.json`. |
+| `product_id` | string | References `catalog.json`'s `sku_id`. |
+| `category` | string | Denormalized from the product, for convenience. |
+| `amount` | number | `unit_price * qty` for that historical order (`unit_price` is a random 85-100% of the product's *current* `list_price` — a past-deal discount, not today's negotiation). |
+| `currency` | string | `"INR"`. |
+| `timestamp` | string | ISO 8601 UTC, drawn from a **fixed** reference window (`2025-08-31` to `2026-08-31`), not wall-clock "now" — reproducibility must not depend on when the generator is actually run. |
+
+Order volume per buyer is deliberately skewed (a handful of "whale"
+buyers get ~8x the order weight of everyone else) — the user's explicit
+choice, so the LTV tiers (Section 2C) are actually exercised across the
+population in the demo rather than everyone landing in the same tier.
+
+---
+
+## Section 2 — Negotiation protocol / offer shape
+
+Every offer/counter is a structured object:
+
+```
+{offer_id, price, qty, terms, expiration, timestamp}
+```
+
+- `offer_id`: string, unique per offer (e.g. `uuid4` hex).
+- `price`: number, proposed unit price.
+- `qty`: integer, requested quantity.
+- `terms`: string, free-form, unexamined by Milestone-1 logic.
+- `expiration`: ISO 8601 UTC timestamp string.
+- `timestamp`: ISO 8601 UTC timestamp string, when the offer was created.
+
+Every decision (accept/counter/reject) carries a concise rationale string
+and an `evidence_paths` array of dotted paths into the policy object, e.g.
+`["policy.min_price"]`, `["policy.qty_breaks[1].discount_pct"]`,
+`["policy.max_negotiation_rounds"]`.
+
+Merchant counter-offer price is deterministic:
+`max(min_price, list_price * (1 - applicable_discount_pct_at_offer_qty))`
+— the most generous price permitted under policy at the buyer's requested
+quantity. The counter keeps the buyer's requested quantity unchanged.
+
+---
+
+## Section 2A — AI buyer-agent (Milestone 3a)
+
+An alternate, LLM-driven buyer implementation (`src/agents/ai_buyer_agent.py`,
+`AIBuyerAgent`), selectable via `BUYER_MODE=scripted|ai` (default
+`scripted`) instead of the Milestone-1 `BuyerAgent`. Same external
+interface (`initial_offer()`, `respond_to_counter(counter_offer)`) so the
+negotiation loop treats either as a drop-in.
+
+One Gemini API call per round (`gemini-3.5-flash-lite`, via the
+`google-genai` SDK's `client.models.generate_content` with
+`response_mime_type="application/json"` and `response_schema=BuyerDecision`
+— model and provider both confirmed with the user 2026-08-29, superseding
+the Claude-based build from the same milestone's first attempt), never a
+multi-agent pipeline. Structured output:
+
+```json
+{
+  "target_price": 4300.0,
+  "walk_away_price": 4550.0,
+  "strategy_note": "Opening low since list price leaves room to negotiate; will concede toward the merchant's counter.",
+  "offer": { "price": 4100.0, "qty": 3, "terms": "" }
+}
+```
+
+- `target_price` / `walk_away_price`: the buyer's private goal and ceiling
+  — never sent to the merchant, never present in the `offer` object.
+- `strategy_note`: 1–2 sentence private reasoning — audit only (Section 4B).
+- `offer`: `{price, qty, terms}` — combined with a generated `offer_id`,
+  `expiration`, and `timestamp` (via the existing `offer_utils.new_offer`
+  helper) to produce a Section 2-shaped offer, identical in structure to
+  the scripted buyer's.
+
+The model is prompted with the persona config (Milestone-3a-only, not a
+merchant-policy-schema field — see Assumptions), the full prior negotiation
+history (offers and counters so far), and the merchant's latest counter
+(absent on the opening move), with instructions to move price gradually
+toward the merchant's counter across rounds rather than jumping to
+`target_price` or repeating a prior offer — see the AI-buyer test
+requirements in the Milestone-3a build for the concrete monotonic-
+concession check. Code enforces `offer.price <= walk_away_price`
+regardless of what the model returns (Constraints).
+
+`respond_to_counter`'s accept/counter decision is derived programmatically,
+mirroring the scripted buyer: if the model's decided price this round is
+`>=` the merchant's counter price, that counts as accepting the counter
+(at the counter's price); otherwise it's a new counter-offer.
+
+### Error handling and retries
+
+`GEMINI_API_KEY` is read from the environment only, never hardcoded or
+logged. Two internal exception types (`src/agents/ai_buyer_agent.py`)
+distinguish failure modes:
+
+- **`TransientLLMError`** — a Gemini rate limit (`ClientError` code 429), a
+  Gemini server error (`ServerError`, 5xx), or a network/connection
+  failure. Retried with exponential backoff (default: 3 retries, 1s base
+  delay, 20s cap) before giving up.
+- **`BuyerUnavailableError`** — raised once retries are exhausted (or
+  immediately if `GEMINI_API_KEY` is unset). Caught by
+  `run_negotiation()`, which logs a `buyer_unavailable` audit entry and
+  returns the new terminal state `BUYER_UNAVAILABLE` (Section 3) instead
+  of letting the exception crash the whole negotiation.
+
+A non-429 4xx error (bad request, auth failure, permission denied) is
+**not** treated as transient — it propagates immediately, uncaught,
+rather than being silently retried or swallowed. Those indicate a
+configuration or code bug, not a free-tier quota/availability issue, and
+should surface loudly rather than presenting as a graceful "buyer
+unavailable" outcome.
+
+The retry primitives (`TransientLLMError`, `LLMUnavailableError`,
+`call_llm_with_retry`) live in `src/agents/llm_utils.py`, shared by both
+the buyer (this section) and the merchant (Section 2B) — `ai_buyer_agent.py`
+re-raises the shared `LLMUnavailableError` as its own `BuyerUnavailableError`
+for backward compatibility with existing imports/tests.
+
+---
+
+## Section 2B — AI merchant strategy layer (Milestone 3b)
+
+The merchant-agent gets a second, optional layer on top of the
+Milestone-1 guardrails, selectable via `MERCHANT_MODE=rules|ai` (default
+`rules`) — same pattern as `BUYER_MODE`. `negotiation_loop.run_negotiation()`
+stays implementation-agnostic: it calls whatever `merchant_evaluate(offer,
+policy, round, negotiation_history)` callable it's given, defaulting to
+`merchant_agent.evaluate_rules`.
+
+### Layer 1 — `check_guardrails(offer, policy, round)`
+
+Pure, deterministic, no LLM or network calls. This **is** the Milestone-1
+`evaluate()` logic (Section 3), renamed, with one addition:
+`policy.inventory_floor` (Section 1) — `offer.qty < inventory_floor` is a
+hard reject, independent of price. `evaluate()` is now a one-line
+backward-compatible alias for `check_guardrails()`; every existing caller
+and test that imports `evaluate` keeps working unchanged.
+`evaluate_rules(offer, policy, round, negotiation_history=None)` wraps it
+with the 4-arg shape `run_negotiation()` expects (the trailing history
+argument is accepted and ignored) — this is `MERCHANT_MODE=rules`.
+
+### Layer 2 — `decide_strategy(offer, policy, round, negotiation_history)`
+
+One Gemini call (`gemini-3.5-flash-lite`, same model/provider as the
+buyer-agent), structured output:
+
+```json
+{
+  "action": "counter",
+  "counter_offer": { "price": 4300.0, "qty": 3, "terms": "" },
+  "concession_reasoning": "The buyer has moved up twice already; holding just above the midpoint should close this without giving up more margin than needed."
+}
+```
+
+- `action`: `"accept" | "counter" | "reject"`.
+- `counter_offer`: `{price, qty, terms}` when `action == "counter"`, else
+  `null`.
+- `concession_reasoning`: private strategic reasoning — audit only
+  (Section 4C), and only ever logged when the proposal needed no clamp
+  (see Constraints).
+
+The model is prompted with the full policy (including `qty_breaks`, so it
+can *mention* a quantity-break incentive in `terms`/reasoning), the
+current round and cap, the buyer's current offer, and the negotiation
+history so far. It is explicitly told a separate, deterministic system
+will re-check everything it proposes — its job is genuine strategy within
+the policy limits, not caution against catastrophe.
+
+### `evaluate_ai(offer, policy, round, negotiation_history, ...)` — the guardrail re-validation
+
+This is `MERCHANT_MODE=ai`'s top-level entry point and the architectural
+core of this milestone:
+
+1. Always calls `check_guardrails(offer, policy, round)` first — this is
+   the ground truth, computed independently of anything Layer 2 says.
+2. Calls `decide_strategy(...)`. On `LLMUnavailableError` (retries
+   exhausted, or `GEMINI_API_KEY` unset), falls back to step 1's verdict
+   directly for this round only — `guardrail_clamped: false`, a note
+   appended to `rationale`, negotiation continues normally. This is a
+   **per-round** fallback, not a terminal state like the buyer's
+   `BUYER_UNAVAILABLE` — the merchant just negotiates as if
+   `MERCHANT_MODE=rules` for that one round.
+3. Otherwise, validates the Layer-2 proposal against the Layer-1 verdict:
+
+| Layer 1 verdict | Layer 2 proposes | Result | Clamped? |
+|---|---|---|---|
+| `reject` (min_price, inventory_floor, or round-limit) | anything other than `reject` | Layer 1's own reject, verbatim | yes |
+| `reject` | `reject` | Layer 1's own reject | no |
+| `accept` (offer clears the floor) | `accept` | accept, `concession_reasoning` as rationale | no |
+| `accept` | `reject` | strategic reject — always guardrail-safe | no |
+| `accept` | `counter`, price `>= floor` at this qty | that counter, `concession_reasoning` as rationale | no |
+| `accept` | `counter`, price `< floor` at this qty | counter clamped to the floor | yes |
+| `counter` (offer below floor) | `accept` | Layer 1's own counter (floor), not the accept | yes |
+| `counter` | `reject` | strategic reject — always guardrail-safe | no |
+| `counter` | `counter`, price `>= floor` | that counter, `concession_reasoning` as rationale | no |
+| `counter` | `counter`, price `< floor` | counter clamped to the floor | yes |
+| any | `counter` with no `counter_offer` (malformed) | Layer 1's own verdict | yes |
+
+"The floor" is always `check_guardrails`'s own qty-tier-aware value —
+`max(min_price, list_price * (1 - applicable_discount_pct / 100))` at the
+buyer's current `qty` — never a flatter `min_price`-only clamp (the
+user's explicit choice, since `min_price` alone would under-clamp at
+higher qty tiers and hand away more discount than the policy's tier
+structure intends).
+
+`qty` in any Layer-2 counter is always pinned to the buyer's current
+offer `qty`, regardless of what the proposal contains — see Non-goals.
+
+---
+
+## Section 2C — LTV-to-discount-bonus (Milestone 3c)
+
+Pure, deterministic, `src/personalization.py`. No LLM anywhere in this
+path — same philosophy as `check_guardrails()`.
+
+```python
+HARD_DISCOUNT_CEILING_PCT = 30  # absolute; no tier can ever cross this
+
+LTV_DISCOUNT_TIERS = (
+    (0,      5000,     0),   # ltv < 5000        -> +0%
+    (5000,   20000,    2),   # 5000 <= ltv < 20000  -> +2%
+    (20000,  50000,    5),   # 20000 <= ltv < 50000 -> +5%
+    (50000,  inf,      8),   # ltv >= 50000      -> +8%
+)
+
+def compute_ltv(buyer_id, orders):
+    return sum(o["amount"] for o in orders if o["buyer_id"] == buyer_id)
+
+def ltv_discount_bonus(ltv):
+    for lo, hi, bonus in LTV_DISCOUNT_TIERS:
+        if lo <= ltv < hi:
+            return bonus
+
+def apply_ltv_bonus(policy, ltv_bonus_pct, hard_ceiling_pct=HARD_DISCOUNT_CEILING_PCT):
+    effective = dict(policy)
+    effective["max_discount_pct"] = min(policy["max_discount_pct"] + ltv_bonus_pct, hard_ceiling_pct)
+    effective["qty_breaks"] = [
+        {**t, "discount_pct": min(t["discount_pct"] + ltv_bonus_pct, hard_ceiling_pct)}
+        for t in policy.get("qty_breaks", [])
+    ]
+    return effective
+```
+
+The 4-tier table is the user's explicit choice (over the 3-tier example
+in their own request), and `HARD_DISCOUNT_CEILING_PCT = 30` is their
+explicit choice too, from three grounded options.
+
+**The integration point is the policy dict, not `check_guardrails()`
+itself.** `apply_ltv_bonus()` returns a new policy whose `max_discount_pct`
+and every `qty_breaks` tier's `discount_pct` are already bonused and
+capped; `check_guardrails()` (and `evaluate_ai()`, `evaluate_rules()`)
+receive that dict exactly as they'd receive any other policy — zero
+changes to `merchant_agent.py` for this milestone. This is also why the
+ceiling binds **per-field**: the base rate and every quantity tier are
+each independently capped, so no combination of a generous qty tier and a
+high LTV tier can stack past 30%.
+
+Applying a `ltv_bonus_pct` of `0` (no `BUYER_ID`, or a buyer whose LTV
+falls in the bottom tier) still produces a fresh policy dict, numerically
+identical to the input — `apply_ltv_bonus()` is called unconditionally in
+`negotiation_loop.py`'s `__main__`, not gated behind an `if bonus > 0`.
+
+---
+
+## Section 2D — PRODUCT_ID / BUYER_ID wiring (Milestone 3c)
+
+`negotiation_loop.py`'s `__main__` reads two more optional env vars,
+same pattern as `BUYER_MODE`/`MERCHANT_MODE`/`BUYER_BUDGET`:
+
+| Env var | Effect when set | Default when unset |
+|---|---|---|
+| `PRODUCT_ID` | Looks up that `sku_id` in `data/catalog.json`; builds the negotiation policy from it (`personalization.product_to_policy`) plus `apply_ltv_bonus()`. `max_negotiation_rounds`/`transaction_approval_threshold` aren't catalog fields (Section 1B) — they default to `5`/`20000`, matching `merchant_policy.json`'s existing demo values. | Loads `merchant_policy.json` — Milestone 1/2/3a/3b behavior, byte-for-byte unchanged. |
+| `BUYER_ID` | Looks up that buyer in `data/buyers.json`, sums `data/orders.json` for LTV, and builds `persona`/`max_acceptable_price` from the profile (`personalization.buyer_to_persona`) — budget is the profile's `budget_range` midpoint. | `ltv_bonus_pct = 0`; persona/budget built the same hardcoded way as before. |
+
+The two are independent: either, both, or neither may be set.
+`BUYER_BUDGET`, when also set, still overrides whatever budget the
+`BUYER_ID` profile would have given — it was built as a manual demo
+override and keeps that role for every buyer-construction path, not just
+the hardcoded one. An unrecognized `PRODUCT_ID`/`BUYER_ID` exits with a
+clear error rather than silently falling back, on the same "don't hide
+demo-config mistakes" logic as `BUYER_BUDGET`'s invalid-number handling.
+
+---
+
+## Section 2E — Margin-aware cost floor & inventory liquidation (Milestone 3c follow-up)
+
+Two more deterministic, no-LLM inputs feeding the existing guardrails —
+same integration pattern as the LTV bonus (Section 2C): both are
+resolved entirely inside `product_to_policy()`, so `check_guardrails()`
+in `merchant_agent.py` needed zero changes. Both only apply on the
+`PRODUCT_ID` path — `merchant_policy.json` has no `cost`/
+`days_in_inventory` fields, so the hardcoded fallback is unaffected.
+
+### Cost floor — the ultimate backstop
+
+```python
+COST_MARGIN_MULTIPLIER = 1.02  # cost + 2% minimum margin -- the user's own example
+
+def cost_floor_price(product):
+    return round(product["cost"] * COST_MARGIN_MULTIPLIER, 2)
+```
+
+Takes priority over `min_price`, `max_discount_pct`, and the LTV bonus
+combined (CAP-14) — nothing, including buyer loyalty, can push the
+effective price below it. Enforced by construction: whatever `min_price`
+`product_to_policy()` computes (raw, or already liquidation-relaxed
+below), the function's last step is
+`final_min_price = max(cost_floor_price(product), candidate_min_price)`.
+Since `check_guardrails()`'s own floor formula is already
+`max(min_price, list_price * (1 - discount_pct/100))`, and `min_price`
+itself can now never be below the cost floor, the cost floor propagates
+through unconditionally — no changes needed to that formula.
+
+### Inventory liquidation — min_price relaxes for aged stock, per category
+
+> **Superseded 2026-09-02 (Section 2J):** this subsection describes the
+> ORIGINAL mechanism (`liquidation_adjusted_min_price()`, relaxing
+> `min_price` itself). Live-data analysis found it had no real effect on
+> ~99% of the generated catalog — kept here as historical record per this
+> file's layered-correction discipline; see Section 2J for the current
+> mechanism (`liquidation_relaxation_fraction()`, relaxing the
+> discount-cap floor toward min_price instead).
+
+**Category-specific thresholds, not a single flat number** (replaced a
+flat 100-day threshold from this same follow-up's first draft, before
+the user asked for this refinement). "Aged" means abnormal shelf time
+*relative to that category's normal turnover* — not a depreciation
+clock. Fast-turnover categories (Electronics) need a shorter threshold
+to count as aged; slow, long-tail categories (Books & Media) need a much
+longer one, since it's normal for them to sit a while. The user's
+explicit calibration, anchored at Electronics=180 and Books & Media=380
+(past their "365+" anchor), confirmed as a full list before any code
+changed:
+
+| Category | Threshold (days) |
+|---|---|
+| Electronics | 180 |
+| Toys & Games | 200 |
+| Beauty & Personal Care | 210 |
+| Apparel & Fashion | 230 |
+| Office & Stationery | 250 |
+| Sporting Goods & Outdoors | 280 |
+| Home & Kitchen | 320 |
+| Books & Media | 380 |
+
+```python
+CATEGORY_LIQUIDATION_THRESHOLDS = { ... the table above ... }
+DEFAULT_LIQUIDATION_THRESHOLD = 250  # fallback for an unlisted category
+LIQUIDATION_RAMP_DAYS = 100          # still one shared constant -- not asked to vary by category
+
+def liquidation_threshold_for(category):
+    return CATEGORY_LIQUIDATION_THRESHOLDS.get(category, DEFAULT_LIQUIDATION_THRESHOLD)
+
+def liquidation_adjusted_min_price(product):
+    days = product.get("days_in_inventory", 0)
+    threshold = liquidation_threshold_for(product.get("category"))
+    if days <= threshold:
+        return product["min_price"]
+    floor = cost_floor_price(product)
+    relaxation_pct = min(1.0, (days - threshold) / LIQUIDATION_RAMP_DAYS)
+    relaxed = product["min_price"] - relaxation_pct * (product["min_price"] - floor)
+    return round(max(floor, relaxed), 2)
+```
+
+At or below its category's threshold, `min_price` is untouched. Past it,
+`min_price` relaxes **linearly** toward the cost floor, reaching it
+exactly at `category_threshold + LIQUIDATION_RAMP_DAYS` and staying
+there for any longer `days_in_inventory` — never overshooting below.
+`product_to_policy()` applies this first, then clamps the result with
+`cost_floor_price()` as described above (a second, defensive clamp —
+redundant given the ramp's own `max(floor, relaxed)`, but cheap and
+keeps the "cost floor always wins" invariant obviously true from
+`product_to_policy()`'s code alone, without having to trust the ramp
+math is bug-free).
+
+`CATEGORY_LIQUIDATION_THRESHOLDS` lives in `src/personalization.py` as
+the single source of truth — `scripts/generate_synthetic_data.py`
+imports it directly (rather than duplicating the numbers) so the
+generator's aged-outlier days and the runtime threshold check can never
+drift apart.
+
+### Audit trail — `liquidation_applied`
+
+When a `PRODUCT_ID`'s `days_in_inventory` exceeds its category's
+threshold, `__main__` logs one `liquidation_applied` entry (via the
+existing, unmodified `log_entry()` — no schema change) naming the
+category-specific threshold applied, e.g.:
+
+> `"379 days in inventory, past the 180-day threshold for Electronics; floor relaxed from 5093.53 to 4517.74."`
+
+`personalization.liquidation_rationale(product)` returns this string (or
+`None` if not aged) — a separate, standalone audit entry rather than
+threading the explanation into `check_guardrails()`'s own per-round
+rationale text, since that logic lives in `merchant_agent.py` and stays
+untouched (same "zero changes to merchant_agent.py" discipline as the
+LTV bonus and cost floor above — despite the user's message assuming
+this lookup lived there, corrected before writing any code). `offer` is
+`null` on this entry, same pattern as `buyer_strategy` (Section 4B).
+
+### Worked example (seed-42 catalog)
+
+`SKU-ELEC-003` (27-inch 4K Monitor), the Electronics category's aged
+outlier: `cost=4429.16`, raw `min_price=5093.53`, `days_in_inventory=379`
+(past its 180-day threshold + comfortably into the 100-day ramp).
+`cost_floor_price` = `4517.74`. `min_price` is fully relaxed:
+`product_to_policy()` returns `min_price: 4517.74` — a real ~11%
+reduction from the raw catalog value, capped exactly at the cost floor.
+`SKU-BOOK-003` (Personal Finance Guide), the Books & Media outlier at
+`days_in_inventory=541` — past its own, much longer 380-day threshold —
+relaxes from `1013.20` to `898.66`. A fresh product
+(`days_in_inventory=18`) in the same run keeps its raw `min_price`
+unchanged.
+
+---
+
+## Section 2F — Liquidation-relaxed min_price is counter-able, not an instant reject (bug-fix follow-up, 2026-09-01)
+
+**Bug report:** on `SKU-ELEC-003` (Section 2E's worked example,
+`min_price` relaxed to `4517.74`), a buyer offer of `3800` on round 1 of
+5 produced an immediate `REJECT` with no counter — instead of the
+expected `COUNTER` at the clamped floor, mirroring the behavior
+`test_guardrail_clamp_when_proposal_violates_max_discount_pct` already
+proves for a non-liquidation floor.
+
+**Investigation:** traced `evaluate_ai()`, `round` handling, and
+`check_guardrails()` directly (not by inspection alone) and confirmed
+this was **not** a defect in Layer 2 validation, round-passing, or a
+separate personalization code path — `check_guardrails()` has had, since
+Milestone 1, an unconditional rule that any offer below `policy.min_price`
+is an absolute, non-negotiable instant reject (Section 1). That rule
+fired identically whether `min_price` came from a raw hardcoded policy or
+from Section 2E's liquidation relaxation — the two features had never
+been reconciled, since neither is individually wrong; their interaction
+was simply never decided.
+
+**Decision 1 (confirmed with the user):** a merchant-set `min_price`
+stays an absolute floor everywhere else, unchanged. Only a `min_price`
+that liquidation itself lowered becomes counter-able, like the
+discount-cap floor — the system already gave ground on this floor to
+close an aged-stock deal, so crossing it shouldn't also be treated as an
+instant dealbreaker.
+
+**Decision 2 (surfaced and confirmed before implementing):** the counter
+still lands at `check_guardrails()`'s existing floor formula,
+`max(min_price, list_price * (1 - discount_pct/100))` — unchanged. For
+`SKU-ELEC-003` at qty=3, the discount-cap floor (`7098.68`) is *higher*
+than the liquidation-relaxed `min_price` (`4517.74`), so the actual fixed
+behavior counters at `7098.68`, citing `policy.max_discount_pct` — not at
+`4517.74` as the original bug report assumed. Confirmed as correct
+before implementing, rather than silently building toward the originally
+assumed number.
+
+**Implementation** — the one deliberate exception to Section 2E's "zero
+changes to `merchant_agent.py`" discipline in this milestone, since this
+required `check_guardrails()` itself to distinguish a merchant-set floor
+from a system-relaxed one:
+
+```python
+# personalization.py -- product_to_policy() gains one new field
+is_liquidation_relaxed = product.get("days_in_inventory", 0) > threshold
+policy["min_price_is_liquidation_relaxed"] = is_liquidation_relaxed
+
+# merchant_agent.py -- check_guardrails()
+min_price_is_liquidation_relaxed = policy.get("min_price_is_liquidation_relaxed", False)
+if offer["price"] < policy["min_price"] and not min_price_is_liquidation_relaxed:
+    return _reject(offer, ..., ["policy.min_price"])
+# else falls through to the existing offer["price"] < floor counter/reject logic, unchanged
+```
+
+Defaults to `False` when absent, so every Milestone 1–3c(pre-fix) policy
+dict (including `merchant_policy.json`'s hardcoded fallback, which has no
+`days_in_inventory`) is byte-identical in behavior to before this fix.
+Verified via the full test suite (73 passed, 3 skipped — up from 71
+passed pre-fix, zero regressions) plus a direct reproduction against the
+live seed-42 catalog's `SKU-ELEC-003` confirming the exact expected
+transition: `REJECT` (`policy.min_price`) → `COUNTER` at `7098.68`
+(`policy.max_discount_pct`).
+
+---
+
+## Section 2G — Investigation: identical counter price across rounds is not a plumbing bug (2026-09-01)
+
+**Bug report:** in a live negotiation (`SKU-ELEC-003`, `BUYER_MODE=ai`,
+`MERCHANT_MODE=ai`, `BUYER_BUDGET=4800`), the merchant's counter was
+`7098.68` in all 5 rounds despite the buyer conceding round over round,
+with generic clamp rationale instead of rationale referencing the
+buyer's movement — suspected as Layer 2 either silently falling back to
+rules-only, or not receiving `negotiation_history` in its prompt.
+
+**Investigation:** reproduced the exact scenario live against the real
+Gemini API with a wrapping `llm_call` that logged every prompt actually
+sent. Confirmed:
+- Layer 2 was called all 5 rounds (5 logged real API calls — no silent
+  rules-only fallback).
+- `negotiation_history` was present and correctly accumulating in every
+  round's prompt, including the buyer's real, genuinely conceding offers
+  (`4200` → `4350` → `4500` → `4500` → `4800` across the 5 rounds).
+
+**Root cause:** at qty=3, `SKU-ELEC-003`'s guardrail floor is `7098.68`
+(`policy.max_discount_pct`-derived) — above the buyer's entire budget
+range (max `4800`). `check_guardrails()` clamps any counter below the
+floor to exactly the floor (Section 2), every round, independent of
+whatever price Layer 2 actually proposed underneath — so an identical
+counter price across all rounds is the correct, by-design output for an
+unreachable floor, not evidence Layer 2 saw the same thing every round.
+Likewise, `_validate_against_guardrails()`'s clamp branch has always used
+a fixed, generic rationale string, never `strategy.concession_reasoning`
+(Section 2B/4C) — deliberately, since a clamped proposal's raw text could
+echo the invalid price. Earlier "responsive" live runs (e.g.
+`test_live_ai_merchant_mostly_avoids_clamps_in_a_straightforward_negotiation`)
+looked different only because their floor *was* reachable, so most
+rounds passed through unclamped and surfaced Layer 2's real
+`concession_reasoning` — not because this run's plumbing regressed.
+
+**Outcome:** no code change — `decide_strategy()`/`_build_merchant_prompt()`
+already had the correct contract. Added
+`test_decide_strategy_prompt_includes_negotiation_history_with_buyer_prior_offers`
+and a first-round companion test
+(`test_ai_merchant_agent.py`) asserting the actual prompt string sent to
+the LLM contains prior rounds' buyer offer values, not just the
+current-round offer — locking down the contract this investigation
+verified, so a future regression here would fail a test instead of
+requiring a fresh live investigation.
+
+---
+
+## Section 2H — Investigation: "floor relaxed to Y" console message misread as the negotiation floor (2026-09-01)
+
+**Bug report:** on `SKU-ELEC-003` with `BUYER_BUDGET=5000`, the console
+prints "floor relaxed from 5093.53 to 4517.74" at negotiation start, but
+every counter across all 5 rounds is clamped to `7098.68`; the buyer's
+walk-away price (`5000`, above `4517.74`) still gets rejected at round 5.
+Suspected as `check_guardrails()` using a stale/raw floor instead of
+`personalization.liquidation_adjusted_min_price()`.
+
+**Investigation:** direct trace confirmed `policy["min_price"]` is
+`4517.74` — the correctly liquidation-adjusted value — everywhere
+`check_guardrails()`/`_floor_price()` reads it; there is exactly one
+source of truth (`product_to_policy()`), no second/stale number anywhere
+in the pipeline. `7098.68` comes entirely from `max_discount_pct`
+(`list_price × (1 − 11%)`), a guardrail dimension liquidation was never
+designed to touch (Section 2E: liquidation only ever relaxes `min_price`).
+This is the exact same product/numbers already investigated in Section
+2F, where the two-part floor formula `max(min_price, discount-cap floor)`
+and the resulting `7098.68` counter were explicitly confirmed correct.
+Also re-ran `test_completed_order_decrements_current_inventory_by_ordered_qty`
+and the other personalization tests the bug report named — none of them
+exercise a liquidation-eligible product where the discount-cap floor
+dominates over the relaxed `min_price`, so nothing was masking this.
+
+**Decision (confirmed with the user):** no behavior change — Section 2F's
+floor formula stands. Liquidation relaxes `min_price` only; it was never
+meant to bypass `max_discount_pct`/`qty_breaks`.
+
+**Fix (communication only, not logic):**
+- `personalization.liquidation_rationale()` now says "min_price relaxed
+  from X to Y" instead of "floor relaxed from X to Y" — it describes one
+  input to the floor formula, not necessarily the resulting negotiation
+  floor.
+- `negotiation_loop.py`'s `__main__` now also prints "Effective
+  negotiation floor at qty=N: F (driven by evidence_path)" right after
+  the policy (incl. LTV bonus) is finalized, using the same
+  `_floor_price()` the negotiation itself will enforce — so the console
+  shows the real operative number before round 1, not just the
+  `min_price` component, and this exact class of misreading can't recur.
+- Added `test_liquidation_adjusted_min_price_is_the_single_source_of_truth_in_real_negotiation_rounds`
+  (`test_ai_merchant_agent.py`) proving the single-source-of-truth claim
+  in a scenario where `min_price` genuinely *is* the binding floor after
+  relaxation (unlike `SKU-ELEC-003` at qty=3) — verified against real
+  per-round `evaluate_ai()` output inside `run_negotiation()`, not
+  `liquidation_adjusted_min_price()` called in isolation.
+
+**Follow-up flagged, not fixed here:** constructing that test scenario
+surfaced a real, narrower latent issue — `_floor_price()`'s
+`evidence_path` always cites the discount-tier evidence regardless of
+which term of `max(min_price, discount-computed)` actually won. Before
+Section 2F this was unreachable (the absolute min_price-reject always
+caught a below-min_price offer first when min_price was binding); Section
+2F's fall-through makes it reachable for a liquidation-relaxed product
+whose relaxed `min_price` is still the binding term — the clamped PRICE
+stays correct, but `evidence_paths`/`rationale` can misname
+`policy.max_discount_pct` when `policy.min_price` was the actual driver.
+Spawned as a separate, scoped follow-up rather than fixed inline here.
+
+---
+
+## Section 2I — `_floor_price()` evidence_path fix: correctly attribute a dominant min_price (bug-fix follow-up, 2026-09-01)
+
+Fixes the latent issue flagged at the end of Section 2H. `_floor_price()`
+computed the right clamped price (`max(min_price, discount-computed)`) but
+always returned the discount-tier `evidence_path` (`policy.max_discount_pct`
+or `policy.qty_breaks[N].discount_pct`) regardless of which operand of that
+`max()` actually won. Harmless before Section 2F — an offer below
+`min_price` was always caught by `check_guardrails()`'s earlier,
+unconditional absolute-reject first, so the mislabeled branch was
+unreachable whenever `min_price` was the binding term. Section 2F's
+liquidation fall-through made it reachable: for a liquidation-relaxed
+product whose relaxed `min_price` is still higher than the discount-derived
+floor, execution now falls through to the counter branch with `min_price`
+as the true driver, but the audit trail cited the discount tier instead.
+
+**Fix:** `_floor_price()` now compares `policy["min_price"]` against the
+discount-computed value directly and returns `"policy.min_price"` as the
+`evidence_path` whenever `min_price` is `>=` that computed value (i.e.
+whenever it's the term that wins the `max()`); the discount-tier evidence
+path from `_applicable_tier()` is returned only when the discount-computed
+value genuinely wins. The clamped price itself is unchanged — this is an
+audit-trail-attribution fix only, not a pricing change. Both call sites
+(`check_guardrails()` and `_validate_against_guardrails()`'s clamp branch,
+via `_build_merchant_prompt()`) already propagate whatever `_floor_price()`
+returns, so no other code needed to change.
+
+Added
+`test_guardrail_evidence_path_names_min_price_when_it_dominates_after_liquidation_relaxation`
+(`test_ai_merchant_agent.py`) — a liquidation-relaxed product (`min_price`
+relaxed to 1950, discount-derived floor 1900) whose relaxed `min_price` is
+still the binding term, asserting `evidence_paths == ["policy.min_price"]`
+on the resulting counter (previously `["policy.max_discount_pct"]`).
+
+Added a direct companion,
+`test_guardrail_evidence_path_still_names_max_discount_pct_when_it_dominates`
+(2026-09-02 follow-up — flagged as missing after the first pass only
+covered the min_price-dominant side) — proves the fix didn't regress the
+original, already-correct case. Reuses `POLICY` (`test_ai_merchant_agent.py`'s
+module-level fixture, already the "discount floor is binding" case —
+`min_price=3799` < discount floor `4399.12`) rather than a new product,
+calling `check_guardrails()` directly and asserting
+`evidence_paths == ["policy.max_discount_pct"]` by exact equality. Pairs
+directly with the min_price-dominant test above for a clean side-by-side
+regression check. Verified via the full test suite: 79 passed, 3 skipped
+— up from 76 passed pre-fix, zero regressions.
+
+---
+
+## Section 2J — Structural fix: liquidation relaxes the discount-cap floor, not min_price (2026-09-02)
+
+**Investigation:** live-data analysis found that `liquidation_adjusted_min_price()`
+(Section 2E's original mechanism, relaxing `min_price` toward
+`cost_floor_price()`) had **zero real effect** on any negotiation outcome
+in the actual generated catalog. `min_price = cost * 1.15` sits well
+below the discount-cap floor (`list_price * (1 - max_discount_pct/100)`)
+for 79/80 products (seed=42) -- confirmed empirically across all 8 aged
+outliers: every one's effective floor (`max(min_price, discount-cap
+floor)`) was identical whether or not liquidation had engaged, because
+the discount-cap term always dominated regardless. The mechanism
+computed and logged a value correctly (Section 2E/2F/2G/2H/2I all
+verified *that* faithfully) -- but the value it computed was never the
+one that mattered for 99% of products.
+
+**Fix:** liquidation now relaxes the **discount-cap floor** itself,
+ramping it toward `min_price` (the true, unrelaxed margin floor) as
+`days_in_inventory` grows past the category threshold -- the opposite
+direction from the original mechanism. `min_price` is no longer touched
+by liquidation at all; it stays exactly the raw catalog value (still
+defensively clamped up to `cost_floor_price()`, Section 2E, unchanged).
+
+```python
+# personalization.py
+def liquidation_relaxation_fraction(product):
+    """0.0 (untouched) to 1.0 (fully ramped) -- how far past this
+    product's category threshold days_in_inventory has progressed."""
+    days = product.get("days_in_inventory", 0)
+    threshold = liquidation_threshold_for(product.get("category"))
+    if days <= threshold:
+        return 0.0
+    return min(1.0, (days - threshold) / LIQUIDATION_RAMP_DAYS)
+
+# product_to_policy() no longer calls anything to adjust min_price;
+# it just clamps the raw value up to cost_floor_price() (Section 2E,
+# unchanged) and adds the new field:
+policy["liquidation_relaxation_fraction"] = liquidation_relaxation_fraction(product)
+
+# merchant_agent.py -- _floor_price(), the one place that knows the
+# qty-dependent discount-computed price
+discount_pct, discount_evidence_path = _applicable_tier(policy, qty)
+computed = policy["list_price"] * (1 - discount_pct / 100)
+liquidation_fraction = policy.get("liquidation_relaxation_fraction", 0.0)
+if liquidation_fraction > 0:
+    computed = computed - liquidation_fraction * (computed - policy["min_price"])
+if policy["min_price"] >= computed:
+    return policy["min_price"], "policy.min_price"
+return computed, discount_evidence_path
+```
+
+Defaults to `0.0` when the field is absent (`merchant_policy.json`'s
+hardcoded fallback, every pre-fix test fixture), so behavior there is
+byte-identical to before. The interpolation happens directly in
+price-space, targeting `min_price` as an absolute price -- not as a
+discount percentage -- so it's independent of `HARD_DISCOUNT_CEILING_PCT`
+(Section 2C), which governs a different mechanism (LTV-bonus stacking on
+the nominal discount rate) and was never meant to constrain how far
+liquidation can approach the merchant's own already-established margin
+floor.
+
+**Section 2F/2I interactions, confirmed still correct:**
+- `min_price_is_liquidation_relaxed` (Section 2F) keeps its exact
+  assignment logic (`days_in_inventory > threshold`) and role in
+  `check_guardrails()` -- unchanged. Still needed: once a product's ramp
+  fully reaches `min_price` (fraction `1.0`), `min_price` itself becomes
+  the binding floor, and it must stay counter-able rather than reverting
+  to an instant reject -- the exact scenario Section 2F fixed, now
+  reachable via a different path (see live verification below).
+- Section 2I's evidence_path fix required no changes at all:
+  `_floor_price()`'s `if policy["min_price"] >= computed` check now simply
+  receives an already-liquidation-adjusted `computed`, and naturally
+  flips `evidence_path` to `"policy.min_price"` exactly when the ramp
+  reaches full (or a defensively-clamped `min_price` is reached early),
+  and stays `"policy.max_discount_pct"`/`qty_breaks[N]` for partial ramps
+  where the discount-cap term still wins. Verified with two new tests
+  (`test_liquidation_lowers_the_effective_floor_measurably_even_when_discount_cap_was_binding`,
+  `test_liquidation_partial_ramp_still_cites_max_discount_pct_while_measurably_lowering_the_floor`)
+  and confirmed against the real seed=42 catalog.
+
+**Live verification (real seed=42 catalog, all 8 aged outliers):**
+
+| SKU | ramp fraction | fresh floor | aged floor | drop | evidence |
+|---|---|---|---|---|---|
+| SKU-ELEC-003 | 1.00 | 7098.68 | 5093.53 | 28.2% | policy.min_price |
+| SKU-APRL-003 | 0.55 | 1825.09 | 1808.53 | 0.9% | policy.max_discount_pct |
+| SKU-HOME-003 | 1.00 | 2601.84 | 2243.96 | 13.8% | policy.min_price |
+| SKU-SPRT-003 | 1.00 | 6689.73 | 6152.32 | 8.0% | policy.min_price |
+| SKU-BOOK-003 | 1.00 | 1173.52 | 1013.20 | 13.7% | policy.min_price |
+| SKU-BEAU-003 | 0.71 | 2202.50 | 1756.08 | 20.3% | policy.max_discount_pct |
+| SKU-TOYS-003 | 1.00 | 777.43 | 726.70 | 6.5% | policy.min_price |
+| SKU-OFFC-003 | 0.79 | 824.49 | 772.88 | 6.3% | policy.max_discount_pct |
+
+Every aged product now shows a real, non-zero drop -- versus 0.0% for
+all 8 before this fix. Also confirmed live end-to-end
+(`PRODUCT_ID=SKU-ELEC-003`): a round-1 offer of `3800` (below `min_price`)
+still draws a `COUNTER` at `5093.53` citing `policy.min_price`, not an
+instant reject -- Section 2F's fix still holds under the new mechanism.
+
+**`liquidation_rationale()` message updated** (personalization.py) --
+was "min_price relaxed from X to Y" (Section 2G's wording, itself already
+correcting an earlier "floor relaxed" phrasing that Section 2H flagged as
+misleading); now: "the discount-cap floor is relaxed N% of the way toward
+the margin floor (min_price P)" -- no longer implies min_price's own
+value changed, and no longer implies a single quotable "from X to Y"
+floor price exists independent of qty (the actual floor is qty-dependent,
+computed by `_floor_price()` at negotiation time). The `negotiation_loop.py`
+"Effective negotiation floor at qty=N" console line (Section 2H) needed no
+changes -- it already calls `_floor_price()` directly, so it automatically
+reflects the corrected, now-measurably-lower value.
+
+Verified via the full test suite: 80 passed, 3 skipped, zero regressions
+(up from 79 passed pre-fix). `liquidation_adjusted_min_price()` is
+removed (no longer meaningful under the new mechanism); every test that
+called it directly was rewritten against `liquidation_relaxation_fraction()`
+and/or the real effective floor via `merchant_agent._floor_price()`.
+
+---
+
+## Section 3 — State machine
+
+### States
+
+| State | Meaning |
+|---|---|
+| `OPEN` | Negotiation started, no offer evaluated yet. |
+| `BUYER_TURN` | Buyer-agent must produce an offer or counter. |
+| `MERCHANT_TURN` | Merchant-agent must evaluate the current offer via `evaluate(offer, policy, round)`. |
+| `AGREEMENT_RECORDED` | **Terminal.** Merchant accepted an offer. |
+| `REJECTED` | **Terminal.** Explicit policy violation with no viable counter, or the round cap was reached with no agreement. |
+| `BUYER_UNAVAILABLE` | **Terminal (Milestone 3a, AI buyer only).** The AI buyer's LLM backend stayed unreachable/rate-limited through all retries — see Section 2A. Never reachable with the scripted buyer. |
+
+### Transition table
+
+| From state | Trigger | Merchant decision | To state | Notes |
+|---|---|---|---|---|
+| `OPEN` | Buyer generates initial offer | — | `MERCHANT_TURN` | Round counter starts at 1. |
+| `OPEN` / `BUYER_TURN` | AI buyer's LLM call fails after all retries | — | `BUYER_UNAVAILABLE` | Terminal. AI buyer only (Section 2A); logs `buyer_unavailable`. |
+| `MERCHANT_TURN` | `evaluate()` called | `accept` | `AGREEMENT_RECORDED` | Terminal. |
+| `MERCHANT_TURN` | `evaluate()` called | `reject` | `REJECTED` | Terminal — explicit-violation variant. |
+| `MERCHANT_TURN` | `evaluate()` called | `counter` AND `round >= max_negotiation_rounds` | `REJECTED` | Terminal — round-limit variant. |
+| `MERCHANT_TURN` | `evaluate()` called | `counter` AND `round < max_negotiation_rounds` | `BUYER_TURN` | Merchant's counter becomes the current offer; round increments. |
+| `BUYER_TURN` | Buyer-agent reacts to merchant's counter | — | `MERCHANT_TURN` | Buyer accepts the counter, or proposes a new counter via its scripted strategy. |
+
+### Terminal states (exactly one per run)
+
+1. **`AGREEMENT_RECORDED`** — merchant accepted an offer within the round cap.
+2. **`REJECTED` (explicit)** — merchant rejected on policy grounds with no viable counter.
+3. **`REJECTED` (round-limit)** — `max_negotiation_rounds` reached without agreement.
+4. **`BUYER_UNAVAILABLE`** (Milestone 3a, AI buyer only) — the AI buyer's
+   LLM backend failed through all retries; not reachable with the
+   scripted buyer.
+
+Both `REJECTED` variants write the same terminal `action: "reject"` audit
+entry; the distinguishing detail lives in `rationale` and `evidence_paths`
+(round-limit variant's evidence path is `policy.max_negotiation_rounds`).
+
+---
+
+## Section 3A — Payment state machine (Milestone 2)
+
+`AGREEMENT_RECORDED` is still the negotiation phase's own terminal state
+(CAP-2 / `run_negotiation()` is unchanged). A separate orchestration layer
+picks up from there and carries the deal through payment.
+
+### States
+
+| State | Meaning |
+|---|---|
+| `PENDING_APPROVAL` | `agreed_price * qty` exceeds `policy.transaction_approval_threshold`; waiting on a human y/n. |
+| `PAYMENT_INITIATED` | A real Razorpay test-mode order has been created (`orders.create`); the payment outcome is about to be simulated. |
+| `COMPLETED` | **Terminal.** Simulated payment succeeded. |
+| `ROLLBACK` | **Terminal.** Simulated payment failed; inventory hold released, `human_notification` emitted. |
+| `APPROVAL_DECLINED` | **Terminal.** A human declined the approval gate; no order was ever created. |
+
+### Transition table
+
+| From state | Trigger | To state | Notes |
+|---|---|---|---|
+| `AGREEMENT_RECORDED` | `agreed_price * qty <= policy.transaction_approval_threshold` | `PAYMENT_INITIATED` | Approval gate skipped; also logs an `inventory_hold` audit entry. |
+| `AGREEMENT_RECORDED` | `agreed_price * qty > policy.transaction_approval_threshold` | `PENDING_APPROVAL` | Logs an `approval_requested` audit entry; also logs `inventory_hold`. |
+| `PENDING_APPROVAL` | Human confirms (CLI `y`) | `PAYMENT_INITIATED` | Logs `approval_granted`. |
+| `PENDING_APPROVAL` | Human declines (CLI `n`) | `APPROVAL_DECLINED` | Terminal. Logs `approval_declined`. `payment_service` is never called. |
+| `PAYMENT_INITIATED` | Order created; simulated outcome = success | `COMPLETED` | Terminal. Logs `payment_completed`. |
+| `PAYMENT_INITIATED` | Order created; simulated outcome = forced failure | `ROLLBACK` | Terminal. Logs `payment_rollback` (with Razorpay error code), `inventory_release`, and `human_notification`. |
+
+### Payment simulation boundary (why, not a hidden shortcut)
+
+Razorpay's standard flow requires a browser Checkout step between order
+creation and payment capture — a payment only becomes capturable once a
+customer completes checkout. Parley's negotiation loop is a headless CLI
+flow with no browser step, so:
+
+- `payment_service.create_order(amount, currency)` makes a **real** call to
+  Razorpay's test-mode Orders API and returns a real `order_id`.
+- The payment **outcome** (success vs. forced failure) is decided by
+  `payment_service.simulate_payment(order_id, force_failure)` — an
+  in-process simulation, not a real `payments.capture` call, since no
+  browser checkout ever produced a real `payment_id` to capture. A forced
+  failure produces a synthetic Razorpay-style error code
+  (`"BAD_REQUEST_ERROR"`, description `"Payment failed (simulated test-mode
+  failure)."`) attached to the `ROLLBACK` audit entry.
+
+### Amount units
+
+Razorpay's API expects amounts in the currency's smallest subunit (paise
+for INR): `amount = round(agreed_price * qty * 100)`. Every other Parley
+field (`list_price`, `min_price`, offer `price`, etc.) stays in decimal
+rupees; only `payment.amount` (Section 4A) and the `payment_service` call
+use paise.
+
+---
+
+## Section 3B — Inventory fulfillment check (Milestone 3c)
+
+Only active when `run_full_transaction()` is given `product`
+(a `catalog.json` entry) and `catalog_path` — i.e. only on the
+`PRODUCT_ID` path (Section 2D). Both default to `None`, under which this
+whole section is skipped and behavior is byte-for-byte Milestone 1/2/3a/3b.
+
+Inserted into the Section 3A payment flow **before** `inventory_hold`
+(and therefore before the approval gate and before any Razorpay call):
+
+| From state | Trigger | To state | Notes |
+|---|---|---|---|
+| `AGREEMENT_RECORDED` | `negotiated qty > product.current_inventory` | `ROLLBACK` | Terminal. Logs `insufficient_inventory` then `human_notification`. `payment_service` is **never** called — this is caught earlier than, and for a different reason than, the existing payment-failure `ROLLBACK` (Section 3A). |
+| `AGREEMENT_RECORDED` | `negotiated qty <= product.current_inventory` | `PAYMENT_INITIATED` | Proceeds exactly as Section 3A. |
+| `PAYMENT_INITIATED` | Payment `COMPLETED` | `COMPLETED` | `catalog.json`'s `current_inventory` for this `sku_id` is decremented by the ordered qty (`personalization.decrement_inventory` — read-modify-write the file) and an `inventory_decremented` entry is logged. |
+
+Both `ROLLBACK` variants (this one and Section 3A's payment failure) now
+carry a `"reason"` key on the `run_full_transaction()` return value:
+`"insufficient_inventory"` or `"payment_failure"` — purely additive to
+the outcome dict, no audit-schema change, and no test ever asserted an
+exhaustive key set on it, so this didn't touch Milestone 1/2/3a/3b
+behavior.
+
+### Example outcome (insufficient inventory)
+
+```json
+{"state": "ROLLBACK", "offer": {"price": 4399.12, "qty": 5, ...}, "payment": null, "reason": "insufficient_inventory"}
+```
+
+No `payment` object at all here (`null`, not the Section 4A shape) —
+unlike the payment-failure `ROLLBACK`, no order was ever created, so
+there's nothing Razorpay-shaped to report.
+
+---
+
+## Section 3C — Payment-failure demo output, no-auto-retry guarantee, and explicit retry (Milestone 3c follow-up)
+
+### Console demo block
+
+`run_full_transaction()`'s payment-attempt logic was refactored into a
+shared `_attempt_payment()` (used by both the first, automatic attempt
+and `retry_payment()` below). When `__main__` sees
+`outcome.get("reason") == "payment_failure"`, it prints a formatted block
+(ASCII-only — Windows consoles mangle `—` without a UTF-8 codepage set,
+confirmed by a mojibake test run) distinct from the per-entry
+`_print_event()` trail:
+
+```
+============================================================
+  PAYMENT FAILED - ROLLBACK
+============================================================
+  Order:   order_TWTXV8PKgRpEmw
+  Reason:  BAD_REQUEST_ERROR - Payment failed (simulated test-mode failure).
+  Amount:  13197.36 INR
+
+  Checklist:
+    [x] Order remains unpaid (no capture occurred)
+    [x] No duplicate payment attempt was made
+    [x] Buyer-agent was notified (buyer_notification logged)
+    [x] Human/operator was notified (human_notification logged)
+    [x] Simulated inventory hold released
+============================================================
+```
+
+Every checklist line is true **by construction**, not asserted text:
+`_attempt_payment()`'s rollback branch always logs `payment_rollback`,
+`inventory_release`, `buyer_notification`, and `human_notification`
+together in the exact code path that produces this outcome — the console
+block runs after all four are already written.
+
+Set `FORCE_PAYMENT_FAILURE=1` (also `true`/`yes`) to trigger this from
+the CLI for a demo — previously there was no way to force a failure from
+`__main__` at all, only from test code calling `run_full_transaction(...,
+force_payment_failure=True)` directly.
+
+### No-auto-retry guarantee
+
+`_attempt_payment()` makes exactly one `payment_service.create_order()`
+call per invocation and never calls itself or loops — "a failed payment
+is never automatically retried" is true by construction, not convention.
+Tested directly: one `run_full_transaction()` call with a forced failure
+produces exactly one `payment_client.order.calls` entry and zero
+`payment_retry_approved` audit entries.
+
+### `retry_payment(offer, policy, ...)` — the explicit re-authorization step
+
+The **only** way a previously-failed payment is ever retried. Never
+called by `run_full_transaction()` or `_attempt_payment()` — a caller
+(a human operator today; a future explicit CLI flag) must invoke it
+separately, once per retry attempt. Logs `payment_retry_approved` (the
+explicit-authorization marker) and re-places `inventory_hold` (the
+original hold was already released on the first failure — Section 3A),
+then calls `_attempt_payment(..., is_retry=True)`, which logs the same
+lifecycle entries as the first attempt with `" (retry)"` appended to
+their rationale text for audit-trail clarity.
+
+**Hold duration — reuses the offer's own `expiration`, no second timer.**
+The user's explicit choice: `merchant_policy.json` has no
+`offer_expiration_seconds` field (a corrected misconception — the 5
+minutes in question is `offer_utils.new_offer()`'s hardcoded
+`ttl_minutes=5` default, which governs *offer* validity, not a payment-
+retry concept). Rather than invent a second, unrelated timer,
+`retry_payment()` simply checks `now < offer.expiration` — the same
+window the accepted offer already had. Past that, it raises `ValueError`
+requiring a fresh negotiation instead of resurrecting an expired offer;
+inventory sufficiency is deliberately **not** re-checked on retry (the
+window is short and this wasn't asked for — flagged as an assumption
+below, not silently expanded scope).
+
+### `buyer_notification` (distinct from `human_notification`)
+
+New action, logged alongside (not instead of) the existing
+`human_notification` on every payment failure — same base schema
+(Section 4), `agent: "buyer-agent"` instead of `"merchant-agent"`,
+distinct rationale text aimed at the buyer's side of the failure rather
+than the operator's. No schema change; reuses `log_entry()` unmodified,
+same discipline as Section 4B's `buyer_strategy`.
+
+---
+
+## Section 4 — Audit log schema
+
+One JSON object per line, appended to `audits/negotiation.log` for every
+negotiation action (initial offer, each counter, and the terminal
+decision).
+
+| Field | Type | Description |
+|---|---|---|
+| `timestamp` | string | ISO 8601 UTC, when this action was recorded. |
+| `decision_id` | string | Unique id for this audit entry (e.g. `uuid4` hex). |
+| `agent` | string | `"buyer-agent"` or `"merchant-agent"`. |
+| `action` | string | One of `"offer"`, `"counter"`, `"accept"`, `"reject"`. |
+| `offer` | object | The offer this entry concerns (Section 2 shape). |
+| `rationale` | string | 1–2 sentence explanation naming the policy field that drove it. `""` for plain buyer `"offer"` actions. |
+| `evidence_paths` | array of strings | Dotted paths into the policy object. `[]` for plain buyer `"offer"` actions. |
+| `decision_hash` | string | sha256 hex digest — see formula below. |
+| `provenance_sha` | string | SHA of the code/docs version informing this decision. Milestone 1 uses the literal placeholder `"UNVERIFIED"`. |
+
+### `decision_hash` formula
+
+```python
+import hashlib
+import json
+
+def decision_hash(offer: dict, rationale: str, evidence_paths: list[str]) -> str:
+    canonical = json.dumps(
+        {"offer": offer, "rationale": rationale, "evidence_paths": evidence_paths},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+```
+
+Independently recomputable from any logged entry's `offer`, `rationale`,
+and `evidence_paths` fields.
+
+### Example entry (merchant rejects below `min_price`)
+
+```json
+{"timestamp": "2026-08-29T10:15:03Z", "decision_id": "8f14e45f-ceea-467e-9998-1234567890ab", "agent": "merchant-agent", "action": "reject", "offer": {"offer_id": "a1b2c3", "price": 3500.0, "qty": 3, "terms": "", "expiration": "2026-08-29T10:20:03Z", "timestamp": "2026-08-29T10:15:00Z"}, "rationale": "Offer price 3500.0 is below policy.min_price 3799.0 for qty 3.", "evidence_paths": ["policy.min_price"], "decision_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85", "provenance_sha": "UNVERIFIED"}
+```
+
+(The `decision_hash` value above is illustrative — the real value is
+whatever the formula produces for this exact `offer`/`rationale`/
+`evidence_paths` triple.)
+
+---
+
+## Section 4A — Payment audit fields (Milestone 2)
+
+Same base schema as Section 4 (all nine fields still present on every
+entry). Payment-lifecycle actions additionally carry a `payment` field;
+`offer` still carries the underlying negotiated offer for traceability.
+
+| `action` value | Meaning |
+|---|---|
+| `"inventory_hold"` | Simulated hold placed after `AGREEMENT_RECORDED`. |
+| `"approval_requested"` | Value exceeds `transaction_approval_threshold`; pausing for human input. |
+| `"approval_granted"` | Human confirmed via the CLI y/n prompt. |
+| `"approval_declined"` | Human declined; `payment_service` never called. |
+| `"payment_initiated"` | Real Razorpay test-mode order created. |
+| `"payment_completed"` | Simulated payment succeeded. |
+| `"payment_rollback"` | Simulated payment failed. |
+| `"inventory_release"` | Hold released as part of rollback. |
+| `"human_notification"` | Structured stand-in for an email/SMS alert on rollback. |
+| `"insufficient_inventory"` | Milestone 3c (Section 3B): negotiated qty exceeds `catalog.json` stock; rolled back before any payment call. |
+| `"inventory_decremented"` | Milestone 3c (Section 3B): `catalog.json` stock reduced by the ordered qty after `COMPLETED`. |
+| `"buyer_notification"` | Milestone 3c (Section 3C): the buyer-agent's side of a payment failure — `agent: "buyer-agent"`, distinct from `human_notification`. |
+| `"payment_retry_approved"` | Milestone 3c (Section 3C): explicit re-authorization marker, logged only inside `retry_payment()` — never on the first, automatic attempt. |
+| `"liquidation_applied"` | Milestone 3c follow-up (Section 2E): logged once when a `PRODUCT_ID`'s `days_in_inventory` exceeds its category's threshold; names the category-specific threshold and the before/after floor. |
+
+### `payment` field shape
+
+```json
+{
+  "order_id": "order_ABC123",
+  "payment_id": null,
+  "amount": 439912,
+  "currency": "INR",
+  "status": "created",
+  "error_code": null,
+  "error_description": null
+}
+```
+
+- `amount`: integer, paise (Section 3A).
+- `status`: one of `"created"`, `"completed"`, `"failed"`.
+- `payment_id`: always `null` in Milestone 2 (Section 3A — no real capture
+  happens); reserved for a future milestone that adds real checkout.
+- `error_code` / `error_description`: populated only on `payment_rollback`
+  entries, with the synthetic error from Section 3A.
+- **Never present anywhere:** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, or
+  the raw Razorpay API request/response body.
+
+### `decision_hash` extension
+
+`decision_hash(offer, rationale, evidence_paths, payment=None)` — when
+`payment` is not `None`, it is included as a fourth key in the canonical
+JSON object before hashing:
+
+```python
+def decision_hash(offer, rationale, evidence_paths, payment=None):
+    obj = {"offer": offer, "rationale": rationale, "evidence_paths": evidence_paths}
+    if payment is not None:
+        obj["payment"] = payment
+    canonical = json.dumps(obj, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+```
+
+Every Milestone-1 entry (no `payment`) hashes identically to before —
+this is a strict extension, not a breaking change.
+
+---
+
+## Section 4B — Buyer strategy audit entry (Milestone 3a)
+
+The AI buyer's private reasoning gets its own entry, logged via the
+**existing, unmodified** `log_entry()` — no schema change, no new field.
+It reuses the same nine base fields from Section 4:
+
+| Field | Value for this entry |
+|---|---|
+| `agent` | `"buyer-agent"` |
+| `action` | `"buyer_strategy"` |
+| `offer` | `null` — this entry isn't an offer; the adjacent `"offer"`-action entry (Section 2) carries the real one. |
+| `rationale` | `strategy_note`, with `target_price` and `walk_away_price` appended, e.g. `"Opening low since list price leaves room to negotiate; will concede toward the merchant's counter. (private: target_price=4300.0, walk_away_price=4550.0)"` |
+| `evidence_paths` | `[]` — not a policy-driven decision. |
+| `decision_hash` | Computed the normal way over `(null, rationale, [])` — still independently recomputable. |
+
+Logged once per AI-buyer round, immediately before that round's `"offer"`
+(or the accept) entry — chronologically, the buyer reasons privately, then
+sends the offer. Never logged for the scripted buyer (it has no private
+reasoning to log — `run_negotiation()` checks for a `last_strategy`
+attribute the scripted `BuyerAgent` doesn't have, and no-ops if absent).
+
+This keeps `target_price` / `walk_away_price` / `strategy_note` fully
+explainable in the audit trail while the `audit_logger.py` code and the
+Section 4 field list stay byte-for-byte what they were in Milestone 2 —
+satisfies "do not touch the audit schema."
+
+---
+
+## Section 4C — Guardrail-clamp audit field (Milestone 3b)
+
+One real schema addition (the user's explicit ask, unlike Section 4B's
+reuse-only approach): `guardrail_clamped: bool`, present **only** on
+AI-merchant (`MERCHANT_MODE=ai`) decision entries — absent from every
+rules-only, buyer, and payment entry, so Milestone 1/2/3a audit entries
+hash identically to before (`decision_hash`'s `guardrail_clamped=None`
+default omits it from the canonical JSON, exactly like `payment=None`).
+
+| Field | Value |
+|---|---|
+| `guardrail_clamped` | `true` if Layer 1 overrode or adjusted Layer 2's proposal this round (Section 2B's table); `false` if the AI merchant's proposal passed through unchanged (including a Gemini-outage fallback — nothing was clamped, Layer 2 just didn't run). |
+
+`rationale` on a clamped entry states which policy field was violated
+(`evidence_paths` too) and that a clamp occurred — **never** the rejected
+raw price/qty Layer 2 proposed, and never `concession_reasoning` verbatim
+(free text could echo the rejected value in prose, which code can't fully
+sanitize). `concession_reasoning` is logged as `rationale` only when the
+proposal needed no clamp at all.
+
+### Example entry (clamped)
+
+```json
+{"timestamp": "2026-08-29T14:02:11Z", "decision_id": "c1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6", "agent": "merchant-agent", "action": "counter", "offer": {"offer_id": "f7e6d5c4b3a2918070605040302010f", "price": 4399.12, "qty": 1, "terms": "", "expiration": "2026-08-29T14:07:11Z", "timestamp": "2026-08-29T14:02:11Z"}, "rationale": "Layer 2's proposed counter violated policy.max_discount_pct; clamped to the policy floor before being sent to the buyer.", "evidence_paths": ["policy.max_discount_pct"], "decision_hash": "...", "provenance_sha": "UNVERIFIED", "guardrail_clamped": true}
+```
+
+Note `offer.price` is the valid, clamped `4399.12` — the invalid value
+Layer 2 actually proposed appears nowhere in this entry.
+
+### `decision_hash` extension
+
+`decision_hash(offer, rationale, evidence_paths, payment=None,
+guardrail_clamped=None)` — `guardrail_clamped` is included as a fifth
+canonical-JSON key when not `None`, alongside the existing `payment`
+extension (Section 4A). Independent of each other; either, both, or
+neither may be present on a given entry.
+
+---
+
+## Assumptions
+
+- Currency is INR: Razorpay is India-focused and `PROJECT_GUIDANCE.md` left
+  currency an open question with only a numeric threshold (5000) stated.
+- `qty_breaks` entries define the maximum `discount_pct` allowed at that
+  quantity tier, overriding (not stacking with) the base
+  `max_discount_pct`.
+- Merchant counter-offer price is the most generous price permitted under
+  policy at the buyer's requested quantity; quantity is unchanged in a
+  counter.
+- `offer.terms` is a free-form string reserved for future milestones.
+- `provenance_sha` uses the literal placeholder `"UNVERIFIED"` for
+  Milestone 1, matching the precedent `AGENTS.md` sets for its own
+  provenance line.
+- Milestone 1 negotiates a single product/SKU per `merchant_policy.json`.
+- `decision_hash` = sha256 hex digest of UTF-8 canonical JSON
+  (`sort_keys=True, separators=(',', ':')`) of `{offer, rationale,
+  evidence_paths}`.
+- The buyer-agent's scripted opening offer and split-the-difference
+  concession strategy is a Milestone-1 test-harness detail, not part of
+  the cross-milestone contract.
+
+All confirmed by the user on 2026-08-29.
+
+### Milestone 2 additions (confirmed by the user on 2026-08-29)
+
+- `transaction_approval_threshold` lives in `merchant_policy.json`, not as
+  a `TRANSACTION_APPROVAL_THRESHOLD` env var — supersedes the env-var line
+  in `AGENTS.md` (updated to match).
+- Payment outcome is simulated in-process (Section 3A); only order
+  creation is a real Razorpay test-mode API call. This is a deliberate,
+  documented demo boundary, not a placeholder to fix later in this
+  milestone.
+- Inventory hold/release are logged/audited events only — no real stock
+  counter anywhere.
+- Redaction scope: `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` and the raw
+  Razorpay API response are never logged; only the curated `payment`
+  field subset (Section 4A) appears in audit entries.
+- `APPROVAL_DECLINED` (Section 3A) is an added terminal state for the
+  human-declines-approval path, not explicitly named in the Milestone-2
+  request but required to give that path a defined outcome — flagged here
+  rather than silently invented.
+
+### Milestone 3a additions
+
+- **Superseded 2026-08-29**: the buyer LLM backend was rebuilt on Gemini,
+  replacing the Claude-based build from this same milestone's first
+  attempt (user's explicit direction — provider swap, not an addition).
+  `anthropic` stays in `requirements.txt` at the user's request (in case
+  the Claude-backed buyer is revisited later) but nothing in the codebase
+  calls it anymore.
+- Model: `gemini-3.5-flash-lite`, via `google-genai`'s
+  `client.models.generate_content` with `response_schema=BuyerDecision`
+  (`response.parsed` is used when non-`None`, else `response.text` is
+  parsed manually) — the user's explicit choice from three grounded
+  options (Google's own docs were inconsistent about which Flash-tier
+  model is "current," so this was asked rather than guessed).
+- Persona config (`budget`, `target_product`, `willingness_to_negotiate`)
+  is passed as constructor args to `AIBuyerAgent`, mirroring the scripted
+  `BuyerAgent`'s constructor-arg pattern — not a new top-level JSON file
+  and not a `merchant_policy.json` field (it describes the buyer, not the
+  merchant). `willingness_to_negotiate` is a free-text descriptor fed
+  directly into the prompt (e.g. `"moderate -- open to a fair discount but
+  not desperate"`), not a constrained enum.
+- The LLM-call seam is dependency-injected (`llm_call` constructor param,
+  same pattern as `payment_service`'s `client` param and the approval
+  gate's `approval_confirm` param) so tests never make live network calls
+  and never construct real `google.genai.errors` instances — an injected
+  test double raises the module's own `TransientLLMError` directly to
+  simulate a retryable Gemini failure.
+- `BUYER_MODE` is read by the demo script (`negotiation_loop.py`'s
+  `__main__`), defaulting to `scripted` — not by `run_negotiation()`
+  itself, which stays buyer-implementation-agnostic and accepts whichever
+  buyer object it's given.
+- Retry policy (Section 2A) defaults to 3 retries, 1s base delay, 20s cap,
+  exponential backoff — not specified by the user, chosen as a reasonable
+  default for a free-tier-quota demo; `sleep_fn` is injectable so tests
+  never actually sleep.
+- A non-429 4xx Gemini error (bad request, auth, permission) is treated as
+  a real bug and propagates uncaught rather than being retried or
+  downgraded to `BUYER_UNAVAILABLE` — only 429/5xx/network failures are
+  "transient" (see Section 2A's Error handling and retries).
+- The one live-LLM integration test is gated by a custom `live_llm` pytest
+  marker (registered in `tests/conftest.py`, unchanged from the Claude
+  attempt), skipped by default and run with `pytest --run-live-llm`. Needs
+  a real `GEMINI_API_KEY` in the environment to actually run.
+
+### Milestone 3b additions (confirmed by the user on 2026-08-29)
+
+- `inventory_floor` means minimum order quantity, not a stock/safety-
+  reserve counter — the user's explicit choice, keeps Milestone 2's "no
+  real inventory tracking" non-goal intact. Optional in the policy schema
+  (default `1`) so it never breaks a Milestone 1/2/3a policy fixture that
+  predates it.
+- Guardrail clamps always target `check_guardrails`'s own qty-tier-aware
+  floor, never a flat `min_price` — the user's explicit choice, avoids
+  under-clamping (handing away more discount than the tier structure
+  intends) at higher qty tiers.
+- `TransientLLMError`/`LLMUnavailableError`/`call_llm_with_retry` were
+  extracted from `ai_buyer_agent.py` into a shared `src/agents/llm_utils.py`
+  so the merchant's Gemini calls reuse the exact same retry mechanics as
+  the buyer's, per "same fallback pattern as buyer-agent." Not requested
+  verbatim, but the natural reading of that instruction; `ai_buyer_agent.py`
+  re-raises the shared `LLMUnavailableError` as `BuyerUnavailableError` so
+  every existing import/test keeps working unchanged.
+- Unlike the buyer (`BuyerUnavailableError` -> negotiation-ending terminal
+  state), a merchant Gemini outage is a **per-round** fallback to
+  `check_guardrails`'s own verdict — the user's deliverable explicitly
+  distinguished this ("fall back... for that round rather than blocking or
+  crashing"), so it's spec, not an assumption.
+- `concession_reasoning` is discarded (never logged) whenever a clamp
+  occurs, even though the deliverable only explicitly named the raw
+  clamped *value* as forbidden from the audit log. Free text could echo
+  that value in prose, which code can't reliably strip -- so the stricter
+  reading was chosen to keep "architecturally impossible... even if the
+  LLM's output tries to" true in practice, not just against the specific
+  mocked test case. Flagged here since it goes beyond the literal ask.
+- A Layer-2 "accept" on an offer that fails `check_guardrails` is treated
+  as a guardrail violation requiring an override (Section 2B's table),
+  even though the deliverable's own guardrail-test example was specifically
+  about a violating `counter_offer` price — accepting a sub-floor offer is
+  the same class of violation and the architecture would be incomplete
+  without covering it too.
+- Reusing `check_guardrails`'s own logic/thresholds for the merchant's
+  `_build_merchant_prompt` (rather than re-deriving policy math in the
+  prompt-construction code) was not specified but is a straightforward
+  DRY choice, not treated as a judgment call worth flagging further.
+
+### Milestone 3c additions (confirmed by the user on 2026-08-31)
+
+- Categories: 8, general-retail (Electronics, Apparel & Fashion, Home &
+  Kitchen, Sporting Goods & Outdoors, Books & Media, Beauty & Personal
+  Care, Toys & Games, Office & Stationery) — the user's "broader general
+  retail" choice over a tech-only catalog.
+- LTV tiers: the finer-grained 4-tier table (Section 2C) — the user's
+  choice over their own 3-tier example.
+- Hard discount ceiling: 30% — the user's choice, over 25%/35%.
+- Order distribution: skewed ("whale" buyers get ~8x order weight) — the
+  user's choice, so all 4 LTV tiers are actually exercised in the demo
+  rather than everyone landing in the same tier (verified: the seed-42
+  data's top buyer's LTV is 341,244 vs. a median around 8,000).
+- The LTV bonus stacks additively onto **whichever** discount is in play
+  for a given qty (the base `max_discount_pct` OR a matched `qty_breaks`
+  tier), each independently capped at the ceiling — not just onto the
+  base field. The deliverable's literal wording ("raises max_discount_pct
+  for that specific negotiation") could be read narrower (base field
+  only), but a loyal high-LTV buyer getting no bonus at all when ordering
+  in bulk (i.e. exactly when a qty_breaks tier applies) would undermine
+  the feature's own point. Flagged here as a judgment call, not asked
+  about since it wasn't in the user's explicit list of things to confirm.
+- `min_price = cost * 1.15` (15% minimum acceptable margin) in the
+  generator — a concrete number for "derived from cost + a minimum
+  acceptable margin" that the deliverable left unspecified. Reversible by
+  regenerating with a different constant; not asked about since it's
+  generator-internal and doesn't affect the negotiation contract.
+- `max_negotiation_rounds`/`transaction_approval_threshold` aren't part
+  of the `catalog.json` schema (deliverable 1 doesn't list them as
+  per-product fields) — the `PRODUCT_ID` path defaults them to `5`/
+  `20000`, matching `merchant_policy.json`'s existing demo values, rather
+  than adding new env vars for them (out of scope of what was asked).
+- A buyer's concrete `persona.budget`/`max_acceptable_price` is the
+  midpoint of their `budget_range` — a deterministic single value was
+  needed since `AIBuyerAgent`/`BuyerAgent` both expect one number, not a
+  range; midpoint was the least-arbitrary reduction. `BUYER_BUDGET`
+  overrides it when set, same as every other buyer-construction path.
+- `run_full_transaction()`'s existing payment-failure `ROLLBACK` return
+  also gained a `"reason": "payment_failure"` key, for symmetry with the
+  new `"insufficient_inventory"` reason — purely additive, confirmed no
+  existing test asserts an exhaustive key set on the outcome dict.
+- The inventory check also emits a `human_notification` entry (mirroring
+  the existing payment-failure path's business logic: alert a human on
+  any rollback) — not explicitly requested, a reasonable extension of the
+  established pattern rather than a new invented behavior.
+- `scripts/generate_synthetic_data.py`'s order timestamps are drawn from
+  a **fixed** reference window (2025-08-31 to 2026-08-31), not
+  `datetime.now()` — required for "same seed -> same data" to actually
+  hold regardless of when the script is run, not just within one sitting.
+
+### Milestone 3c follow-up (payment-failure demo output; confirmed by the user on 2026-08-31)
+
+- The `offer_expiration_seconds` field the user referenced doesn't exist
+  in `merchant_policy.json` — corrected before proceeding rather than
+  building against a field that isn't there; see Section 3C.
+- Post-failure hold reuses the offer's own `expiration` (the user's
+  explicit choice over a distinct, longer timer), so `retry_payment()`
+  needed no new policy field and no new timer concept at all.
+- Console block text is ASCII-only, not the em-dash used elsewhere in
+  this spec's prose — a live demo run on this Windows environment showed
+  `—` rendering as mojibake in the actual console without a UTF-8
+  codepage set; caught and fixed during verification, not assumed safe.
+- `retry_payment()` does not re-check inventory sufficiency (Section 3B)
+  before re-attempting — not explicitly requested, and the retry window
+  is short (bounded by the original offer's ~5-minute expiration), so
+  treated as acceptable simplicity rather than scope worth expanding
+  without being asked.
+- `_attempt_payment()`'s rollback branch logs `buyer_notification` right
+  after `inventory_release` and before `human_notification` — ordering
+  wasn't specified; chosen so the buyer-facing entry appears before the
+  operator-facing one, matching "record the buyer-agent's side too, not
+  just the merchant/operator side" being the newer, less-covered half of
+  the existing behavior.
+- Added `FORCE_PAYMENT_FAILURE` (`__main__` only, values `1`/`true`/`yes`)
+  since there was previously no way to trigger this scenario from the CLI
+  at all, only from test code — a gap noticed while verifying the
+  console output actually renders during a live demo run, not part of
+  the original ask but necessary to fulfill it.
+
+### Milestone 3c: margin floor + inventory liquidation (confirmed by the user on 2026-09-01)
+
+- Cost margin multiplier: `1.02` (2% minimum margin) — the user's own
+  example, confirmed as-is over a less razor-thin `1.05`.
+- Liquidation threshold: `100` days — the user's own example, confirmed
+  as-is.
+- Aged outliers in the generated catalog: `8` (one per category,
+  `days_in_inventory` 120-400), the other 72 products at 1-90 days — the
+  user's confirmed count over a sparser 4-outlier option.
+- `LIQUIDATION_RAMP_DAYS = 100` (full relaxation to the cost floor by
+  `threshold + ramp` = 200 days) was **not** asked about — the user's
+  explicit list was margin percentage, threshold, and outlier count only.
+  Chosen as the simplest explainable shape (a linear ramp exactly as long
+  as the threshold itself) rather than expanding the question set further.
+- `product_to_policy()` applies liquidation relaxation, then clamps with
+  the cost floor as a second, defensive step — redundant given the ramp
+  formula's own internal `max(floor, relaxed)`, but keeps "the cost floor
+  always wins" true from reading `product_to_policy()` alone, without
+  needing to trust the ramp math elsewhere is bug-free. Not asked about;
+  a straightforward defense-in-depth choice matching this project's
+  existing "validate in code, don't just trust the formula" discipline
+  (Section 2B's guardrail re-validation is the same instinct).
+- Two existing tests broke from this change and were fixed, not the
+  spec/behavior: `test_ltv_is_computable_and_produces_a_meaningfully_
+  skewed_distribution`'s `10x` threshold (relaxed to `5x` — adding a new
+  RNG draw per product for `days_in_inventory` shifted the seeded random
+  sequence for every *later* draw too, including buyer/order generation,
+  changing the realized skew ratio from a prior run's ~9.5x to something
+  that happened to sit just under the old, arbitrarily-strict threshold);
+  and `test_personalization.py`'s `_demo_product()` helper (needed a
+  `cost` field, now required by `product_to_policy()`). Neither reflects
+  a behavior change the user needs to know about beyond this note.
+
+### Milestone 3c: category-specific liquidation thresholds (confirmed by the user on 2026-09-01)
+
+- The 8-category threshold table (180 through 380) was proposed and
+  confirmed in full before any code changed, per the user's explicit
+  process ask — see the table in Section 2E.
+- Two corrections made before/while implementing, not silently absorbed:
+  - The user's deliverable said "the margin floor (cost + 15%) still
+    overrides liquidation" — but `cost * 1.15` is `product_to_policy()`'s
+    raw, *unrelaxed* `min_price` baseline in the generator, a different
+    number from the actual hard floor, `cost_floor_price()` = `cost *
+    1.02` (Section 2E). The tests for this deliverable use the real
+    invariant (`cost_floor_price`), not the mixed-up figure.
+  - The user asked to update "the runtime liquidation/floor-relaxation
+    check in `merchant_agent.py`" — but that logic has always lived in
+    `src/personalization.py`, never `merchant_agent.py` (deliberately,
+    across both this milestone and 3b, to keep `check_guardrails()`
+    untouched). Updated in its actual location; `merchant_agent.py`
+    remains unchanged.
+- `CATEGORY_LIQUIDATION_THRESHOLDS` was placed in `src/personalization.py`
+  as the single source of truth, with `scripts/generate_synthetic_data.py`
+  importing it (new cross-package import, `sys.path` adjusted so the
+  script runs standalone via `python scripts/generate_synthetic_data.py`)
+  rather than duplicating the eight numbers — not asked about specifically,
+  chosen to make drift between generated data and the runtime check
+  structurally impossible rather than just documented.
+- `DEFAULT_LIQUIDATION_THRESHOLD = 250` (fallback for an unlisted
+  category) was not asked about — chosen as roughly the table's midpoint,
+  a reasonable default that should never actually fire against real
+  generated data (all 8 real categories are in the table).
+- `liquidation_applied` is logged as its own standalone audit entry
+  (`offer: null`, mirroring `buyer_strategy`), not woven into
+  `check_guardrails()`'s own rationale text for whichever accept/counter/
+  reject entry the relaxed `min_price` happens to drive — the cleanest
+  way to satisfy "the audit log rationale text ... names the threshold"
+  without touching `merchant_agent.py` at all.
+- Aged-outlier ranges in the generator changed from a flat `120-400` to
+  `category_threshold + 20..220` (per category) — not given exact numbers
+  by the user, chosen so every outlier lands comfortably past its own
+  threshold (never barely past it) while still varying by category scale.
+- Section 2F bug fix: investigated first, confirmed it was not a defect
+  in `evaluate_ai()`/round-handling before proposing any change — the
+  instant reject was `check_guardrails()`'s own Milestone-1 rule,
+  correctly firing on an interaction between two individually-correct
+  features (absolute `min_price` floor, liquidation relaxation) that had
+  never been reconciled. Two design decisions confirmed with the user
+  before implementing: (1) only a liquidation-relaxed `min_price` becomes
+  counter-able, a merchant-set one stays absolute everywhere else; (2)
+  the counter price is unchanged from the existing floor formula
+  (`max(min_price, discount-computed)`), so it can land above the
+  relaxed `min_price` itself when the discount cap is the binding
+  constraint — surfaced explicitly since it meant the fixed behavior
+  would not match the bug report's originally assumed counter price.
