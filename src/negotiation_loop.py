@@ -43,7 +43,7 @@ def _log_buyer_unavailable(exc, audit_path, on_event, round_num):
 
 def run_negotiation(
     policy, buyer, audit_path=DEFAULT_AUDIT_PATH, merchant_evaluate=None, on_event=None,
-    buyer_id=None, orders=None,
+    buyer_id=None, orders=None, risk_approval_tier="standard",
 ):
     """Ties buyer-agent and merchant-agent together per
     NEGOTIATION_SPEC.md Section 3. Returns {"state": ..., "offer": ...}
@@ -66,16 +66,36 @@ def run_negotiation(
     trust/fraud one -- it no longer blocks the negotiation. Instead
     apply_risk_discount_cap() tightens `policy` (a local reassignment,
     the original dict passed in is never mutated) so the rest of THIS
-    negotiation runs with max_discount_pct forced to 0 -- full list price
-    only, via the same check_guardrails()/_floor_price() guardrail every
-    other policy field already flows through, no separate code path.
+    negotiation runs with the discount ceiling scaled down, via the same
+    check_guardrails()/_floor_price() guardrail every other policy field
+    already flows through, no separate code path. A THREE-level gradient
+    (2026-09-03 follow-up, confirmed with the user): "high" scales
+    max_discount_pct/qty_breaks to RISK_HIGH_DISCOUNT_FACTOR (0.0 -- full
+    list price, no room at all); "moderate" scales them to
+    RISK_MODERATE_DISCOUNT_FACTOR (0.25 -- a quarter of normal room,
+    not zero); "none" leaves policy completely untouched.
     "moderate"/"high" are both threaded onto the AGREEMENT_RECORDED
     outcome's "risk_level" key; run_full_transaction() reads it, but
-    (Section 2O, 2026-09-02 follow-up) only forces the human-approval
-    gate for "high" -- "moderate" proceeds with zero added friction,
-    still visible only via its risk_review audit entry. When buyer_id/
-    orders are None (every pre-Milestone-5 caller), this
-    whole block is skipped -- behavior is byte-identical to before."""
+    (Section 2O, 2026-09-02 follow-up, unchanged by the gradient above)
+    only forces the human-approval gate for "high" by default --
+    "moderate" still proceeds with zero added APPROVAL friction (though,
+    as of the gradient above, it is no longer pricing-neutral), visible
+    only via its risk_review audit entry. When buyer_id/orders are None
+    (every pre-Milestone-5 caller), this whole block is skipped --
+    behavior is byte-identical to before.
+
+    `risk_approval_tier` (Milestone 6, default "standard" -- every
+    pre-Milestone-6 caller behaves byte-identically): the SELLING
+    merchant's own tolerance, resolved by the caller from
+    data/merchants.json and passed straight through here and to
+    run_full_transaction() (same "policy carries data, caller resolves
+    identity" split as buyer_id/orders above). Does not change
+    risk_assessment()'s none/moderate/high computation at all -- that
+    stays purely about the buyer/qty factors, unaware of which merchant
+    is involved. Only changes what a "moderate" verdict means for THIS
+    merchant: "strict" appends a note to the risk_review rationale here
+    (the actual gating decision is made later, in run_full_transaction(),
+    which also receives risk_approval_tier directly for that)."""
     merchant_evaluate = merchant_evaluate or merchant_agent.evaluate_rules
     round_num = 1
     history = []
@@ -84,21 +104,36 @@ def run_negotiation(
     if buyer_id is not None and orders is not None:
         risk = personalization.risk_assessment(buyer_id, buyer.qty, policy.get("qty_breaks", []), orders)
         risk_level = risk["level"]
-        if risk_level == "high":
+        # 2026-09-03 follow-up: MODERATE now also tightens the discount
+        # ceiling (RISK_MODERATE_DISCOUNT_FACTOR, not just HIGH's full
+        # zeroing) -- both go through this SAME call, which scales
+        # max_discount_pct AND every qty_breaks tier together (see
+        # apply_risk_discount_cap()'s own docstring for why both fields
+        # must move together, not just one).
+        if risk_level != "none":
             policy = personalization.apply_risk_discount_cap(policy, risk)
         if risk_level != "none":
             rationale = risk["rationale"]
-            if risk_level == "high":
-                # 2026-09-02 follow-up: state the ACTUAL, freshly-recomputed
-                # effective floor in the SAME line as the "no negotiation
-                # room" claim, via the exact _floor_price() call the
-                # negotiation itself is about to use (against the
-                # already-tightened `policy` above) -- not a separate,
-                # independently-asserted number that could silently drift
-                # from what check_guardrails() actually enforces if a
-                # future change broke the qty_breaks-zeroing in
-                # apply_risk_discount_cap(). If those two ever disagree,
-                # this line itself becomes visibly wrong, not silently so.
+            if risk_level == "moderate":
+                if risk_approval_tier == "strict":
+                    rationale = (
+                        f"{rationale} This merchant (risk_approval_tier=strict) requires human approval "
+                        "on MODERATE risk too."
+                    )
+                else:
+                    rationale = f"{rationale} No approval required at this risk level for this merchant."
+            if risk_level in ("moderate", "high"):
+                # 2026-09-02 follow-up (extended 2026-09-03 to MODERATE):
+                # state the ACTUAL, freshly-recomputed effective floor in
+                # the SAME line as the discount-ceiling claim, via the
+                # exact _floor_price() call the negotiation itself is
+                # about to use (against the already-tightened `policy`
+                # above) -- not a separate, independently-asserted number
+                # that could silently drift from what check_guardrails()
+                # actually enforces if a future change broke the
+                # qty_breaks-scaling in apply_risk_discount_cap(). If
+                # those two ever disagree, this line itself becomes
+                # visibly wrong, not silently so.
                 effective_floor, _ = merchant_agent._floor_price(policy, buyer.qty)
                 rationale = f"{rationale} Effective floor for this negotiation: {effective_floor:.2f} {policy['currency']}."
             # round_num=0, not None -- _print_event() reads round_num=None
@@ -257,7 +292,7 @@ def run_full_transaction(
     policy, buyer, audit_path=DEFAULT_AUDIT_PATH,
     force_payment_failure=False, force_insufficient_inventory=False,
     approval_confirm=None, payment_client=None, merchant_evaluate=None, on_event=None,
-    product=None, catalog_path=None, buyer_id=None, orders=None,
+    product=None, catalog_path=None, buyer_id=None, orders=None, risk_approval_tier="standard",
 ):
     """Extends run_negotiation() with the payment phase per
     NEGOTIATION_SPEC.md Section 3A: AGREEMENT_RECORDED -> [inventory
@@ -282,11 +317,14 @@ def run_full_transaction(
     transaction_approval_threshold (that negotiation also already ran
     with max_discount_pct forced to 0, inside run_negotiation() --
     nothing further to do with that here). "moderate" (Section 2O,
-    2026-09-02 follow-up) is NOT gated -- it proceeds with zero added
-    friction, visible only via its risk_review audit entry."""
+    2026-09-02 follow-up) is NOT gated by default -- it proceeds with
+    zero added friction, visible only via its risk_review audit entry.
+    `risk_approval_tier` (Milestone 6, default "standard") changes that
+    default per-merchant: "strict" also forces the gate on "moderate" --
+    see run_negotiation() for how the flag is resolved/threaded."""
     negotiation_outcome = run_negotiation(
         policy, buyer, audit_path=audit_path, merchant_evaluate=merchant_evaluate, on_event=on_event,
-        buyer_id=buyer_id, orders=orders,
+        buyer_id=buyer_id, orders=orders, risk_approval_tier=risk_approval_tier,
     )
     if negotiation_outcome["state"] != "AGREEMENT_RECORDED":
         return {"state": negotiation_outcome["state"], "offer": None, "payment": None}
@@ -342,23 +380,38 @@ def run_full_transaction(
 
     risk_level = negotiation_outcome.get("risk_level")
     # 2026-09-02 follow-up (Section 2O): MODERATE no longer forces this
-    # gate -- it proceeds with zero friction (still logged as a
-    # risk_review entry for visibility, just not gated). Only HIGH does,
-    # alongside its own max_discount_pct=0 tightening (applied earlier,
-    # inside run_negotiation()).
-    if total > threshold or risk_level == "high":
+    # gate by default -- it proceeds with zero friction (still logged as
+    # a risk_review entry for visibility, just not gated). HIGH always
+    # does, alongside its own max_discount_pct=0 tightening (applied
+    # earlier, inside run_negotiation()).
+    #
+    # Multi-merchant follow-up (Milestone 6, 2026-09-03): a "strict"
+    # merchant (risk_approval_tier) also gates on MODERATE -- the exact
+    # same gate mechanism, just a lower trigger threshold for that one
+    # merchant. Every pre-Milestone-6 caller passes the default
+    # "standard", so gate_moderate is always False there -- behavior is
+    # byte-identical to Section 2O.
+    gate_moderate = risk_level == "moderate" and risk_approval_tier == "strict"
+    if total > threshold or risk_level == "high" or gate_moderate:
         if total > threshold:
             reason = (
                 f"Transaction total {total:.2f} exceeds policy.transaction_approval_threshold "
                 f"({threshold}); pausing for human approval."
             )
             evidence = ["policy.transaction_approval_threshold"]
-        else:
+        elif risk_level == "high":
             reason = (
                 "High risk flagged by the Risk Agent for this buyer/request; pausing for human "
                 "approval regardless of policy.transaction_approval_threshold."
             )
             evidence = ["risk_agent.risk_level"]
+        else:
+            reason = (
+                "Moderate risk flagged by the Risk Agent, and this merchant (risk_approval_tier=strict) "
+                "requires approval on MODERATE risk too; pausing for human approval regardless of "
+                "policy.transaction_approval_threshold."
+            )
+            evidence = ["risk_agent.risk_level", "merchant.risk_approval_tier"]
         _log(
             on_event, None, "merchant-agent", "approval_requested", offer, reason, evidence, path=audit_path,
         )
@@ -578,9 +631,32 @@ if __name__ == "__main__":
             _log(None, None, "merchant-agent", "liquidation_applied", None, liquidation_note,
                  ["catalog.days_in_inventory"], path=DEFAULT_AUDIT_PATH)
             print(f"Liquidation: {liquidation_note}")
+
+        # Multi-merchant support (Milestone 6, 2026-09-03): every catalog
+        # product carries a merchant_id (CATEGORY_TO_MERCHANT, generator
+        # + personalization.py single source of truth); resolve the real
+        # merchant profile here so risk_approval_tier can vary the Risk
+        # Agent's approval-gate behavior per merchant, not one global
+        # rule. A product with no merchant_id (an older fixture) falls
+        # back to "standard" -- byte-identical to pre-Milestone-6.
+        risk_approval_tier = "standard"
+        if product.get("merchant_id"):
+            merchants = personalization.load_json(personalization.DEFAULT_MERCHANTS_PATH)
+            merchant = personalization.find_merchant(merchants, product["merchant_id"])
+            if merchant is None:
+                raise SystemExit(
+                    f"merchant_id={product['merchant_id']!r} (from {product_id}) not found in "
+                    f"{personalization.DEFAULT_MERCHANTS_PATH}"
+                )
+            risk_approval_tier = merchant["risk_approval_tier"]
+            print(
+                f"Merchant: {merchant['merchant_name']} "
+                f"(risk_approval_tier={risk_approval_tier})"
+            )
     else:
         product = None
         catalog_path = None
+        risk_approval_tier = "standard"
         with open("merchant_policy.json", encoding="utf-8") as f:
             base_policy = json.load(f)
 
@@ -613,20 +689,22 @@ if __name__ == "__main__":
         # shows the real, already-liquidation-adjusted number the
         # negotiation will enforce, not a component of it.
         #
-        # Section 2N follow-up: this preview must ALSO reflect a possible
-        # HIGH-risk discount-cap override, or it shows a stale floor for
-        # exactly the scenario this feature exists to demo -- the real
-        # risk check runs later, inside run_negotiation(), so without this
-        # the printed floor and the negotiation's actual settled price
-        # visibly disagree. preview_policy is throwaway (read-only,
-        # risk_assessment() is a pure function with no logging side
-        # effects) -- the real `policy` passed to run_negotiation() below
-        # is untouched; that function still does its own official risk
-        # check, logging, and cap application independently.
+        # Section 2N follow-up (widened 2026-09-03 to cover MODERATE's new
+        # discount reduction too, not just HIGH's): this preview must
+        # ALSO reflect any risk-driven discount-cap adjustment, or it
+        # shows a stale floor for exactly the scenario this feature
+        # exists to demo -- the real risk check runs later, inside
+        # run_negotiation(), so without this the printed floor and the
+        # negotiation's actual settled price visibly disagree.
+        # preview_policy is throwaway (read-only, risk_assessment() is a
+        # pure function with no logging side effects) -- the real
+        # `policy` passed to run_negotiation() below is untouched; that
+        # function still does its own official risk check, logging, and
+        # cap application independently.
         preview_policy = policy
         if buyer_id is not None and orders is not None:
             preview_risk = personalization.risk_assessment(buyer_id, demo_qty, policy.get("qty_breaks", []), orders)
-            if preview_risk["level"] == "high":
+            if preview_risk["level"] != "none":
                 preview_policy = personalization.apply_risk_discount_cap(policy, preview_risk)
         effective_floor, floor_evidence = merchant_agent._floor_price(preview_policy, demo_qty)
         print(
@@ -688,13 +766,13 @@ if __name__ == "__main__":
             policy, buyer, merchant_evaluate=merchant_evaluate, on_event=_print_event,
             product=product, catalog_path=catalog_path, force_payment_failure=force_payment_failure,
             force_insufficient_inventory=force_insufficient_inventory,
-            buyer_id=buyer_id, orders=orders,
+            buyer_id=buyer_id, orders=orders, risk_approval_tier=risk_approval_tier,
         )
     else:
         print("RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not set -- running negotiation only, no payment phase.")
         outcome = run_negotiation(
             policy, buyer, merchant_evaluate=merchant_evaluate, on_event=_print_event,
-            buyer_id=buyer_id, orders=orders,
+            buyer_id=buyer_id, orders=orders, risk_approval_tier=risk_approval_tier,
         )
 
     _print_terminal_summary(outcome, policy, product)

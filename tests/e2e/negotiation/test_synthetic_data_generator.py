@@ -8,7 +8,7 @@ from scripts.generate_synthetic_data import (
     generate_catalog,
     generate_orders,
 )
-from src.personalization import CATEGORY_LIQUIDATION_THRESHOLDS
+from src.personalization import CATEGORY_LIQUIDATION_THRESHOLDS, CATEGORY_TO_MERCHANT
 
 
 def _generate_all(seed):
@@ -30,7 +30,7 @@ def test_generator_produces_schema_valid_data_at_expected_scale():
     assert 6 <= len(categories) <= 8
 
     required_product_fields = {
-        "sku_id", "category", "list_price", "cost", "min_price", "max_discount_pct",
+        "sku_id", "category", "merchant_id", "list_price", "cost", "min_price", "max_discount_pct",
         "qty_breaks", "current_inventory", "inventory_floor", "days_in_inventory",
     }
     for product in catalog:
@@ -42,9 +42,21 @@ def test_generator_produces_schema_valid_data_at_expected_scale():
         assert product["days_in_inventory"] >= 1
         for tier in product["qty_breaks"]:
             assert tier["discount_pct"] <= 30  # never generated above the hard ceiling
+        # Milestone 6: merchant_id must match this product's category via
+        # the single source of truth (CATEGORY_TO_MERCHANT), never
+        # independently assigned -- generator and runtime can't drift.
+        assert product["merchant_id"] == CATEGORY_TO_MERCHANT[product["category"]]
 
     sku_ids = [p["sku_id"] for p in catalog]
     assert len(sku_ids) == len(set(sku_ids))
+
+    # Milestone 6: every category maps to exactly one merchant, and the
+    # whole-category split lands at 40/40 products (10 per category, 4
+    # categories per merchant) -- confirmed with the user before generating.
+    from collections import Counter
+    merchant_counts = Counter(p["merchant_id"] for p in catalog)
+    assert merchant_counts == {"MERCH-001": 40, "MERCH-002": 40}
+    assert set(CATEGORY_TO_MERCHANT.values()) == {"MERCH-001", "MERCH-002"}
 
     # Each product's "aged" status is judged against its OWN category's
     # threshold, not one flat number -- Milestone 3c follow-up.

@@ -12,6 +12,26 @@ from pathlib import Path
 DEFAULT_CATALOG_PATH = "data/catalog.json"
 DEFAULT_BUYERS_PATH = "data/buyers.json"
 DEFAULT_ORDERS_PATH = "data/orders.json"
+DEFAULT_MERCHANTS_PATH = "data/merchants.json"
+
+# Multi-merchant support (Milestone 6, 2026-09-03): which merchant sells
+# each category -- single source of truth, imported by
+# scripts/generate_synthetic_data.py so the generator and the runtime
+# can never drift apart (same discipline as CATEGORY_LIQUIDATION_THRESHOLDS
+# below). Whole-category split, confirmed with the user before generating
+# anything: MERCH-001 (Voltstream Electronics, risk_approval_tier=strict)
+# gets the tech/gear-adjacent categories; MERCH-002 (Hearth & Home Living,
+# risk_approval_tier=standard) gets the home/lifestyle categories.
+CATEGORY_TO_MERCHANT = {
+    "Electronics": "MERCH-001",
+    "Office & Stationery": "MERCH-001",
+    "Toys & Games": "MERCH-001",
+    "Sporting Goods & Outdoors": "MERCH-001",
+    "Apparel & Fashion": "MERCH-002",
+    "Home & Kitchen": "MERCH-002",
+    "Books & Media": "MERCH-002",
+    "Beauty & Personal Care": "MERCH-002",
+}
 
 # Absolute hard ceiling: no LTV tier, however high, can push the effective
 # discount past this -- confirmed with the user (Milestone 3c).
@@ -58,13 +78,27 @@ RISK_LARGE_QTY_FALLBACK_THRESHOLD = 10  # only used if policy.qty_breaks is empt
 # Reframing (2026-09-02, confirmed with the user): HIGH risk (both
 # factors) is a PRICING-ABUSE signal, not a trust/fraud signal -- it no
 # longer blocks the negotiation before any offer exists (the original
-# NEGOTIATION_DECLINED design). Instead it tightens max_discount_pct to
-# this value for that one negotiation, same "bounded input feeding into
-# the existing guardrail" pattern as the LTV bonus and liquidation ramp --
+# NEGOTIATION_DECLINED design). Instead it tightens the discount ceiling
+# for that one negotiation, same "bounded input feeding into the existing
+# guardrail" pattern as the LTV bonus and liquidation ramp --
 # merchant_agent.py needed zero changes, since check_guardrails()/
-# _floor_price() already treat max_discount_pct as just another policy
-# field. 0 means full list price only, no negotiation room at all.
-RISK_HIGH_DISCOUNT_OVERRIDE_PCT = 0
+# _floor_price() already treat max_discount_pct/qty_breaks as just more
+# policy fields.
+#
+# Three-level gradient (2026-09-03 follow-up, confirmed with the user --
+# same discipline as every other threshold in this module): both
+# RISK_MODERATE_DISCOUNT_FACTOR and RISK_HIGH_DISCOUNT_FACTOR are
+# multiplicative factors (0.0-1.0) applied to BOTH max_discount_pct AND
+# every qty_breaks tier's discount_pct together, in the same function
+# (apply_risk_discount_cap() below) -- learned from the earlier bug
+# (Section 2P/2Q) where only max_discount_pct was zeroed and qty_breaks
+# was left untouched, silently overriding the intended floor. 1.0 would
+# mean "no change" (NONE risk skips this entirely instead, via a None
+# factor -- see risk_assessment()); 0.25 keeps a quarter of the normal
+# discount room; 0.0 (HIGH, unchanged value, same effect as the old
+# RISK_HIGH_DISCOUNT_OVERRIDE_PCT=0) removes it completely.
+RISK_MODERATE_DISCOUNT_FACTOR = 0.25
+RISK_HIGH_DISCOUNT_FACTOR = 0.0
 
 
 # The ultimate, non-negotiable price floor: cost + a 2% minimum margin --
@@ -144,6 +178,14 @@ def find_buyer(buyers, buyer_id):
     return None
 
 
+def find_merchant(merchants, merchant_id):
+    """Milestone 6. Same shape as find_buyer()/find_product()."""
+    for merchant in merchants:
+        if merchant["merchant_id"] == merchant_id:
+            return merchant
+    return None
+
+
 def compute_ltv(buyer_id, orders):
     """Sum of all historical order amounts for this buyer_id. Pure
     function over the orders list -- no I/O, no randomness."""
@@ -169,12 +211,12 @@ def risk_assessment(buyer_id, qty, qty_breaks, orders):
     """Milestone 5 (Risk Agent). Deterministic, no LLM. Returns
     {"level": "none"|"moderate"|"high", "factors": [...],
     "evidence_paths": [...], "rationale": str,
-    "max_discount_pct_override": int | None}. "factors" is human-readable
-    prose (for the rationale/console); "evidence_paths" holds
-    schema-path-style strings matching every other guardrail's convention
-    (e.g. "policy.max_discount_pct", "catalog.days_in_inventory") for the
-    audit log's evidence_paths field -- kept separate so audit consumers
-    see a consistent shape regardless of which check fired.
+    "discount_factor": float | None}. "factors" is human-readable prose
+    (for the rationale/console); "evidence_paths" holds schema-path-style
+    strings matching every other guardrail's convention (e.g.
+    "policy.max_discount_pct", "catalog.days_in_inventory") for the audit
+    log's evidence_paths field -- kept separate so audit consumers see a
+    consistent shape regardless of which check fired.
 
     Two independent factors, both knowable BEFORE any offer exists (see
     module-level comment above RISK_NEW_BUYER_MAX_PRIOR_ORDERS for why
@@ -190,9 +232,12 @@ def risk_assessment(buyer_id, qty, qty_breaks, orders):
 
     "high" (reframed 2026-09-02, confirmed with the user: a
     PRICING-ABUSE signal, not a trust/fraud one) no longer blocks the
-    negotiation -- max_discount_pct_override carries
-    RISK_HIGH_DISCOUNT_OVERRIDE_PCT (0) for the caller to apply via
-    apply_risk_discount_cap() below; None for "moderate"/"none"."""
+    negotiation -- it tightens the discount ceiling instead.
+    "discount_factor" (2026-09-03 three-level-gradient follow-up,
+    confirmed with the user) carries the multiplier the caller applies
+    via apply_risk_discount_cap() below: RISK_MODERATE_DISCOUNT_FACTOR
+    (0.25) for "moderate", RISK_HIGH_DISCOUNT_FACTOR (0.0) for "high",
+    None for "none" (no adjustment at all -- full normal discount room)."""
     prior_orders = count_prior_orders(buyer_id, orders)
     is_new_buyer = prior_orders < RISK_NEW_BUYER_MAX_PRIOR_ORDERS
 
@@ -217,51 +262,61 @@ def risk_assessment(buyer_id, qty, qty_breaks, orders):
     else:
         level = "none"
 
-    max_discount_pct_override = RISK_HIGH_DISCOUNT_OVERRIDE_PCT if level == "high" else None
+    discount_factor = {
+        "high": RISK_HIGH_DISCOUNT_FACTOR, "moderate": RISK_MODERATE_DISCOUNT_FACTOR, "none": None,
+    }[level]
 
     if level == "none":
         rationale = f"No risk factors: buyer_id={buyer_id} has {prior_orders} prior order(s), qty {qty} is below the large-request threshold ({large_qty_threshold})."
     elif level == "high":
         rationale = (
             f"Risk factors for buyer_id={buyer_id}: {'; '.join(factors)}. "
-            f"max_discount_pct forced to {RISK_HIGH_DISCOUNT_OVERRIDE_PCT} for this negotiation -- "
+            f"max_discount_pct forced to {int(RISK_HIGH_DISCOUNT_FACTOR * 100)} for this negotiation -- "
             "full list price only, no negotiation room -- and the human-approval gate is forced "
             "regardless of policy.transaction_approval_threshold."
         )
-    else:
-        rationale = f"Risk factors for buyer_id={buyer_id}: {'; '.join(factors)}."
+    else:  # moderate
+        rationale = (
+            f"Risk factors for buyer_id={buyer_id}: {'; '.join(factors)}. "
+            f"Discount ceiling reduced to {int(RISK_MODERATE_DISCOUNT_FACTOR * 100)}% of normal for this negotiation."
+        )
 
     return {
         "level": level, "factors": factors, "evidence_paths": evidence_paths, "rationale": rationale,
-        "max_discount_pct_override": max_discount_pct_override,
+        "discount_factor": discount_factor,
     }
 
 
 def apply_risk_discount_cap(policy, risk):
     """Returns a NEW policy dict (does not mutate `policy`) with
-    max_discount_pct (and every qty_breaks tier's discount_pct) capped at
-    risk["max_discount_pct_override"] -- a no-op (returns a copy of
-    `policy` unchanged) when that key is None ("moderate"/"none" risk).
+    max_discount_pct AND every qty_breaks tier's discount_pct scaled by
+    risk["discount_factor"] -- a no-op (returns a copy of `policy`
+    unchanged) when that key is None ("none" risk -- full normal discount
+    room). The SAME factor is applied to both fields, in this one
+    function, for every non-None risk level ("moderate" at
+    RISK_MODERATE_DISCOUNT_FACTOR, "high" at RISK_HIGH_DISCOUNT_FACTOR).
 
-    BOTH max_discount_pct and qty_breaks need capping, not just
-    max_discount_pct: merchant_agent._applicable_tier() always prefers a
-    matching qty_breaks tier's discount_pct over max_discount_pct
-    (Section 2 -- qty_breaks tiers OVERRIDE the base rate, they don't
-    stack with it). Since "large_request" (one of the two factors that
-    must BOTH be true to reach "high") is defined as qty at or above the
-    product's own lowest qty_breaks tier, any qty that triggers "high"
-    risk will always match at least that tier -- so capping
-    max_discount_pct alone would be silently overridden by the very
-    qty_breaks tier the large request qualifies for, defeating the "full
-    list price only" intent entirely. min() rather than a flat overwrite,
-    so this only ever tightens a tier's rate, never raises one."""
-    override_pct = risk.get("max_discount_pct_override")
-    if override_pct is None:
+    BOTH fields need scaling together, not just max_discount_pct:
+    merchant_agent._applicable_tier() always prefers a matching
+    qty_breaks tier's discount_pct over max_discount_pct (Section 2 --
+    qty_breaks tiers OVERRIDE the base rate, they don't stack with it).
+    Since "large_request" (one of the two factors "high" requires) is
+    defined as qty at or above the product's own lowest qty_breaks tier,
+    any qty that triggers "high" (and often "moderate", if a request
+    happens to be large without also being new-buyer-driven) will match
+    at least that tier -- so scaling max_discount_pct alone would be
+    silently overridden by the very qty_breaks tier the request
+    qualifies for, defeating the whole point of this function (the exact
+    bug found and fixed in Section 2P/2Q for the "high" case; this
+    function's single-factor-for-both-fields design is what prevents it
+    from recurring for "moderate" too)."""
+    factor = risk.get("discount_factor")
+    if factor is None:
         return dict(policy)
     effective = dict(policy)
-    effective["max_discount_pct"] = min(policy["max_discount_pct"], override_pct)
+    effective["max_discount_pct"] = policy["max_discount_pct"] * factor
     effective["qty_breaks"] = [
-        {**tier, "discount_pct": min(tier["discount_pct"], override_pct)}
+        {**tier, "discount_pct": tier["discount_pct"] * factor}
         for tier in policy.get("qty_breaks", [])
     ]
     return effective
@@ -368,7 +423,15 @@ def product_to_policy(product, max_negotiation_rounds, transaction_approval_thre
     (see liquidation_relaxation_fraction reaching 1.0), min_price itself
     becomes the binding floor for a heavily-aged product, and it must stay
     counter-able rather than reverting to an instant reject -- the exact
-    scenario Section 2F fixed, now reachable via a different path."""
+    scenario Section 2F fixed, now reachable via a different path.
+
+    `merchant_id` (Milestone 6, new field): passed through unchanged from
+    the catalog product -- None for a product without one (e.g. an older
+    fixture predating multi-merchant support). Just a passthrough; this
+    function does no merchant lookup itself, same "policy carries the id,
+    the caller resolves it" pattern already used for buyer_id (Section 2D)
+    -- negotiation_loop.py resolves the actual merchant profile/
+    risk_approval_tier separately, from data/merchants.json."""
     final_min_price = max(cost_floor_price(product), product["min_price"])
     threshold = liquidation_threshold_for(product.get("category"))
     is_liquidation_relaxed = product.get("days_in_inventory", 0) > threshold
@@ -376,6 +439,7 @@ def product_to_policy(product, max_negotiation_rounds, transaction_approval_thre
         "sku_id": product["sku_id"],
         "product_name": product["product_name"],
         "currency": product["currency"],
+        "merchant_id": product.get("merchant_id"),
         "list_price": product["list_price"],
         "min_price": final_min_price,
         "min_price_is_liquidation_relaxed": is_liquidation_relaxed,

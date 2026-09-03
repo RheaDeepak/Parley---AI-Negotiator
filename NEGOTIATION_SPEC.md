@@ -1548,6 +1548,218 @@ Effective negotiation floor at qty=10: 1918.96 INR (driven by policy.qty_breaks[
 
 ---
 
+## Section 2R — Multi-merchant support (Milestone 6, 2026-09-03)
+
+Two merchant profiles, `data/merchants.json`, confirmed with the user
+before generating any data (same discipline as the liquidation category
+table and the Risk Agent thresholds):
+
+| Field | `MERCH-001` | `MERCH-002` |
+|---|---|---|
+| `merchant_name` | Voltstream Electronics | Hearth & Home Living |
+| Categories (whole-category split, confirmed with the user) | Electronics, Office & Stationery, Toys & Games, Sporting Goods & Outdoors | Apparel & Fashion, Home & Kitchen, Books & Media, Beauty & Personal Care |
+| Product count | 40 | 40 |
+| `risk_approval_tier` | `strict` | `standard` |
+
+`business_description`, `currency`, `supported_payment_methods`,
+`shipping_rules`, `return_policy` are real profile data (displayed at
+negotiation start, loaded from the file) but — confirmed scope, not an
+oversight — not yet wired into any guardrail or pricing decision. Only
+`risk_approval_tier` actually changes behavior in this milestone.
+
+### Reused 100% of the existing negotiation/guardrail/risk-agent code
+
+No new negotiation engine, no per-merchant policy duplication.
+`personalization.risk_assessment()` is completely unchanged — its
+none/moderate/high computation stays purely about the buyer and
+quantity, unaware a merchant concept even exists. The only new logic is
+in `negotiation_loop.py`, where `risk_approval_tier` (new parameter,
+default `"standard"` everywhere — every pre-Milestone-6 caller behaves
+byte-identically) widens the SAME approval-gate condition Section 2O
+already established:
+
+```python
+# run_full_transaction()
+gate_moderate = risk_level == "moderate" and risk_approval_tier == "strict"
+if total > threshold or risk_level == "high" or gate_moderate:
+    ...
+```
+
+`run_negotiation()` also receives `risk_approval_tier` directly (not
+derived from `policy` — same "policy carries data, caller resolves
+identity" split already used for `buyer_id`/`orders`), so it can append
+the merchant-specific note to the `risk_review` rationale at the point
+the risk level is first logged, before the gating decision is even made:
+`"...This merchant (risk_approval_tier=strict) requires human approval
+on MODERATE risk too."`
+
+### Product tagging — single source of truth, same pattern as liquidation
+
+`personalization.CATEGORY_TO_MERCHANT` (imported by
+`scripts/generate_synthetic_data.py`, exactly like
+`CATEGORY_LIQUIDATION_THRESHOLDS`) is the only place the category→merchant
+split is defined — the generator and the runtime can never drift apart.
+Regenerating the catalog with this change added only the `merchant_id`
+field to every product; every other field, and `buyers.json`/`orders.json`
+entirely, came back byte-identical (verified by diffing before/after).
+
+`product_to_policy()` gained one passthrough field,
+`"merchant_id": product.get("merchant_id")` — `None` for a product
+predating this milestone, so nothing downstream breaks on old fixtures.
+New `personalization.find_merchant(merchants, merchant_id)` mirrors
+`find_buyer()`/`find_product()`.
+
+### Console output
+
+`__main__` resolves the real merchant profile from `policy["merchant_id"]`
+right after the product/liquidation lines and prints it:
+
+```
+Product (PRODUCT_ID=SKU-ELEC-007): Noise-Cancelling Earbuds (Electronics), current_inventory=16
+Merchant: Voltstream Electronics (risk_approval_tier=strict)
+```
+
+### Verification
+
+Live-verified: the SAME buyer (`BUYER-001`, zero prior orders — the sole
+MODERATE-triggering factor at the default demo qty) against a
+`MERCH-001` (strict) product forces the approval gate; against a
+`MERCH-002` (standard) product it does not — identical buyer, identical
+risk factor, different merchant, different gating outcome:
+
+```
+# MERCH-001 (strict), SKU-ELEC-007, qty=3:
+[Round 0] risk-agent: risk_review
+    Risk factors for buyer_id=BUYER-001: new buyer (0 prior orders). This merchant (risk_approval_tier=strict) requires human approval on MODERATE risk too.
+...
+[Payment] merchant-agent: approval_requested -- price=1669.5 qty=3
+    Moderate risk flagged by the Risk Agent, and this merchant (risk_approval_tier=strict) requires approval on MODERATE risk too; pausing for human approval regardless of policy.transaction_approval_threshold.
+```
+
+Added `test_strict_merchant_forces_approval_on_moderate_risk_but_standard_does_not`
+(the requirement's explicit primary test — same buyer/product-economics/qty
+run twice, only `risk_approval_tier` differs, settled price identical
+either way, only the gate and the `risk_review`/`approval_requested`
+rationale differ) and `test_high_risk_behavior_identical_regardless_of_merchant_tier`
+(HIGH's zero-discount + forced-approval response is byte-identical
+whichever tier — `risk_approval_tier` only ever adds friction to
+MODERATE, never changes HIGH's already-maximal one). Also added
+`test_find_merchant_and_real_merchants_json_shape` and extended the
+synthetic-data-generator test to assert the 40/40 split and that every
+product's `merchant_id` matches `CATEGORY_TO_MERCHANT[category]`.
+
+Full suite: 92 passed, 3 skipped, zero regressions (up from 89 passed
+pre-feature).
+
+---
+
+## Section 2S — Risk Agent discount handling becomes a true three-level gradient (2026-09-03)
+
+**Request:** MODERATE risk (exactly one factor) applies a partial
+discount reduction, not the previous full-vs-zero (untouched-vs-HIGH)
+behavior. NONE and HIGH stay exactly as they are. Reduction factor
+confirmed with the user the same way as every other threshold in this
+project — proposed 50% with a worked example, the user chose **25%**
+instead.
+
+| Level | `discount_factor` | Effect on `max_discount_pct` and every `qty_breaks` tier |
+|---|---|---|
+| `none` | `None` | Untouched — full normal discount room. |
+| `moderate` | `RISK_MODERATE_DISCOUNT_FACTOR = 0.25` | Scaled to 25% of normal — a real, partial reduction. |
+| `high` | `RISK_HIGH_DISCOUNT_FACTOR = 0.0` | Scaled to 0% — full list price, unchanged from Section 2N. |
+
+**Learned from the earlier bug (Section 2P/2Q):** `apply_risk_discount_cap()`
+already scales BOTH `max_discount_pct` AND every `qty_breaks` tier's
+`discount_pct` together, in one function — extending it to MODERATE
+reuses that exact same code path rather than introducing a second,
+parallel adjustment mechanism that could independently drift the way the
+original HIGH-only implementation once did:
+
+```python
+def apply_risk_discount_cap(policy, risk):
+    factor = risk.get("discount_factor")
+    if factor is None:
+        return dict(policy)
+    effective = dict(policy)
+    effective["max_discount_pct"] = policy["max_discount_pct"] * factor
+    effective["qty_breaks"] = [
+        {**tier, "discount_pct": tier["discount_pct"] * factor}
+        for tier in policy.get("qty_breaks", [])
+    ]
+    return effective
+```
+
+`risk["max_discount_pct_override"]` (an absolute override value, HIGH-only)
+is replaced by `risk["discount_factor"]` (a multiplier, all three
+levels) — a genuine generalization, not just a rename.
+
+### Worked example (confirmed with the user before implementing)
+
+`SKU-ELEC-007` (`max_discount_pct=13%`, `list_price=1918.96`), qty=3 (no
+`qty_breaks` tier applies at this qty, so `max_discount_pct` is the
+binding term regardless of level):
+
+| Level | Effective `max_discount_pct` | Effective floor |
+|---|---|---|
+| `none` | 13% | 1669.50 |
+| `moderate` | 3.25% (13 × 0.25) | **1856.59** |
+| `high` | 0% | 1918.96 (= `list_price`) |
+
+A strict, measurable NONE < MODERATE < HIGH ordering — live-verified
+exactly matching this table.
+
+### Console/rationale — same "state the actual number inline" pattern as Section 2P
+
+`risk_assessment()`'s own MODERATE rationale states the reduction
+percentage (`"Discount ceiling reduced to 25% of normal for this
+negotiation."`); `run_negotiation()` then appends the freshly-recomputed
+effective floor, via the exact `_floor_price()` call the negotiation
+itself is about to use — widened from HIGH-only (Section 2P) to also
+cover MODERATE, so it can never silently drift for either tier. The
+existing, already-tested strict-merchant approval note (Section 2R) is
+left completely unchanged; a new, symmetric
+`"No approval required at this risk level for this merchant."` sentence
+is added on the standard-tier path so the audit trail is equally
+explicit either way, without ever having the two claims read as
+contradicting each other. `_evidence_label()` (Section 2Q) also needed a
+small fix: `discount_pct` values are now genuinely fractional (13 × 0.25
+= 3.25), so the label formatting switched from a bare `%d` to `:g` —
+`"0%"`/`"3.25%"` instead of `"0.0%"`/an unpredictable number of decimals.
+`__main__`'s "Effective negotiation floor" preview (Section 2N/2Q) also
+widened from HIGH-only to any non-`"none"` level, for the same
+stale-preview reason as before.
+
+**Live-verified**, matching the worked example exactly:
+
+```
+Effective negotiation floor at qty=3: 1856.59 INR (driven by policy.max_discount_pct (3.25%))
+...
+[Round 0] risk-agent: risk_review
+    Risk factors for buyer_id=BUYER-001: new buyer (0 prior orders). Discount ceiling reduced to 25% of normal for this negotiation. This merchant (risk_approval_tier=strict) requires human approval on MODERATE risk too. Effective floor for this negotiation: 1856.59 INR.
+[Round 1] merchant-agent: counter -- price=1856.59 qty=3
+    Offer price 1631.12 is below the allowed floor 1856.59 for qty 3, per policy.max_discount_pct (3.25%). Countering at 1856.59.
+```
+
+### Verification
+
+Rewrote `test_moderate_risk_logs_but_does_not_gate_or_restrict_pricing`
+→ `test_moderate_risk_applies_a_partial_discount_reduction_between_none_and_high`
+(the requirement's explicit replacement test): computes NONE/MODERATE/HIGH
+floors for the identical product economics, asserts the strict ordering
+`none_floor < moderate_floor < high_floor` (800.00 < 950.00 < 1000.00),
+and separately confirms end to end (via `run_full_transaction()`) that
+MODERATE still forces no approval and settles at the reduced (not
+zeroed, not full) ceiling, with both the reduction percentage and the
+concrete recomputed floor present in the `risk_review` rationale.
+Re-confirmed `test_high_risk_forces_list_price_only_and_still_requires_human_approval`
+and `test_established_buyer_normal_qty_proceeds_completely_unaffected`
+both still pass completely unchanged.
+
+Full suite: 92 passed, 3 skipped, zero regressions (same count as
+pre-change — one test rewritten in place, not added).
+
+---
+
 ## Section 3 — State machine
 
 ### States

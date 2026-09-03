@@ -80,12 +80,18 @@ def _evidence_label(policy, evidence_path):
     ambiguity at the source, everywhere the label is shown, so it can't
     recur. "policy.min_price" passes through unchanged -- it's already an
     absolute price, always stated directly in the surrounding rationale
-    text, not a percentage that can silently be zero."""
+    text, not a percentage that can silently be zero.
+
+    2026-09-03 follow-up (Risk Agent three-level gradient, Section 2S):
+    discount_pct values coming out of apply_risk_discount_cap() are now
+    genuinely fractional (e.g. 13 * 0.25 = 3.25), not just whole numbers
+    or a hardcoded 0 -- :g formatting shows "0" and "3.25" cleanly
+    instead of "0.0" or an unpredictable number of decimal places."""
     if evidence_path == "policy.max_discount_pct":
-        return f"{evidence_path} ({policy['max_discount_pct']}%)"
+        return f"{evidence_path} ({policy['max_discount_pct']:g}%)"
     if evidence_path.startswith("policy.qty_breaks["):
         idx = int(evidence_path.split("[", 1)[1].split("]", 1)[0])
-        return f"{evidence_path} ({policy['qty_breaks'][idx]['discount_pct']}%)"
+        return f"{evidence_path} ({policy['qty_breaks'][idx]['discount_pct']:g}%)"
     return evidence_path
 
 

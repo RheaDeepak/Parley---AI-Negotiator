@@ -1,0 +1,30 @@
+[
+  {
+    "merchant_id": "MERCH-001",
+    "merchant_name": "Voltstream Electronics",
+    "business_description": "Consumer electronics and tech-adjacent gear -- audio, computing accessories, office tech, and outdoor/sporting equipment.",
+    "currency": "INR",
+    "supported_payment_methods": ["card", "upi", "netbanking", "wallet"],
+    "shipping_rules": {
+      "free_shipping_threshold": 999,
+      "standard_delivery_days": "3-5",
+      "express_delivery_available": true
+    },
+    "return_policy": "15-day return window; defective items replaced free within 30 days.",
+    "risk_approval_tier": "strict"
+  },
+  {
+    "merchant_id": "MERCH-002",
+    "merchant_name": "Hearth & Home Living",
+    "business_description": "Home, kitchen, apparel, and personal-care goods for everyday living.",
+    "currency": "INR",
+    "supported_payment_methods": ["card", "upi", "netbanking"],
+    "shipping_rules": {
+      "free_shipping_threshold": 799,
+      "standard_delivery_days": "4-6",
+      "express_delivery_available": false
+    },
+    "return_policy": "30-day return window; free returns on unworn/unopened items.",
+    "risk_approval_tier": "standard"
+  }
+]

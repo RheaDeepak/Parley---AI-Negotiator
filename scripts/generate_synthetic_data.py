@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.personalization import CATEGORY_LIQUIDATION_THRESHOLDS  # noqa: E402
+from src.personalization import CATEGORY_LIQUIDATION_THRESHOLDS, CATEGORY_TO_MERCHANT  # noqa: E402
 
 # Fixed reference window for order timestamps -- NOT datetime.now(), so
 # output is reproducible regardless of when the script actually runs.
@@ -166,6 +166,7 @@ def generate_catalog(rng):
                 "sku_id": sku_id,
                 "product_name": name,
                 "category": category,
+                "merchant_id": CATEGORY_TO_MERCHANT[category],
                 "currency": "INR",
                 "list_price": list_price,
                 "cost": cost,

@@ -7,6 +7,28 @@ from src.agents.buyer_agent import BuyerAgent
 from src.negotiation_loop import run_full_transaction, run_negotiation
 
 
+def test_find_merchant_and_real_merchants_json_shape():
+    """Milestone 6: find_merchant() mirrors find_buyer()/find_product(),
+    and data/merchants.json actually has the two profiles/tiers this
+    milestone's behavior depends on."""
+    assert personalization.find_merchant([], "MERCH-001") is None
+    merchants = [{"merchant_id": "MERCH-001", "merchant_name": "X"}]
+    assert personalization.find_merchant(merchants, "MERCH-001") == merchants[0]
+    assert personalization.find_merchant(merchants, "MERCH-999") is None
+
+    real_merchants = personalization.load_json(personalization.DEFAULT_MERCHANTS_PATH)
+    assert len(real_merchants) == 2
+    tiers = {m["merchant_id"]: m["risk_approval_tier"] for m in real_merchants}
+    assert tiers == {"MERCH-001": "strict", "MERCH-002": "standard"}
+    required_fields = {
+        "merchant_id", "merchant_name", "business_description", "currency",
+        "supported_payment_methods", "shipping_rules", "return_policy", "risk_approval_tier",
+    }
+    for merchant in real_merchants:
+        assert required_fields.issubset(merchant.keys())
+        assert merchant["risk_approval_tier"] in ("standard", "strict")
+
+
 def test_ltv_computation_is_deterministic():
     orders = [
         {"buyer_id": "B1", "amount": 1000.0},
@@ -408,6 +430,91 @@ def test_high_risk_forces_list_price_only_and_still_requires_human_approval(tmp_
     assert any(e["action"] == "offer" for e in entries)  # negotiation DID proceed normally -- offers were made
 
 
+# ---------------------------------------------------------------------------
+# Multi-merchant support (Milestone 6, 2026-09-03) -- risk_approval_tier
+# varies the Risk Agent's approval-gate behavior per merchant, reusing the
+# exact same gate mechanism (Section 2O). risk_assessment() itself is
+# untouched -- none/moderate/high still depends purely on buyer/qty.
+# ---------------------------------------------------------------------------
+
+
+def test_strict_merchant_forces_approval_on_moderate_risk_but_standard_does_not(tmp_path):
+    """Requirement #5's primary test: the SAME buyer/product/qty
+    combination that produces MODERATE risk and proceeds without approval
+    under a "standard" merchant must force approval under a "strict"
+    merchant -- proving the two merchants genuinely behave differently on
+    identical input, not just carrying a cosmetic profile label. Pricing
+    settles identically either way -- risk_approval_tier only ever changes
+    the approval gate, never the negotiated price."""
+    product = _demo_product("SKU-MERCH-TEST", current_inventory=50)
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = []  # new buyer -- the sole MODERATE factor here (qty=1 stays below the large-request threshold)
+
+    def _run(tier, audit_path):
+        buyer = BuyerAgent(qty=1, opening_discount_pct=5, max_acceptable_price=1000.0, list_price=policy["list_price"])
+        return run_full_transaction(
+            policy, buyer, audit_path=str(audit_path), payment_client=SpyClient(),
+            approval_confirm=lambda message: True,
+            buyer_id="BUYER-MERCH-TEST", orders=orders, risk_approval_tier=tier,
+        )
+
+    standard_audit = tmp_path / "standard.log"
+    strict_audit = tmp_path / "strict.log"
+    standard_outcome = _run("standard", standard_audit)
+    strict_outcome = _run("strict", strict_audit)
+
+    assert standard_outcome["state"] == "COMPLETED"
+    assert strict_outcome["state"] == "COMPLETED"
+    assert standard_outcome["offer"]["price"] == strict_outcome["offer"]["price"]  # identical pricing
+
+    standard_entries = _read_log(standard_audit)
+    strict_entries = _read_log(strict_audit)
+    assert not any(e["action"] == "approval_requested" for e in standard_entries)  # zero friction (Section 2O)
+    strict_approval = next(e for e in strict_entries if e["action"] == "approval_requested")
+    assert "risk_approval_tier=strict" in strict_approval["rationale"]
+
+    standard_risk_review = next(e for e in standard_entries if e["action"] == "risk_review")
+    strict_risk_review = next(e for e in strict_entries if e["action"] == "risk_review")
+    assert "risk_approval_tier=strict" not in standard_risk_review["rationale"]
+    assert "risk_approval_tier=strict" in strict_risk_review["rationale"]  # requirement #4's console-explainability ask
+
+
+def test_high_risk_behavior_identical_regardless_of_merchant_tier(tmp_path):
+    """Requirement #5's second explicit case: HIGH risk (zero discount +
+    forced approval, Section 2N) must be unchanged and identical whether
+    the selling merchant is "standard" or "strict" -- risk_approval_tier
+    only ever ADDS friction for MODERATE; it never changes HIGH's
+    already-maximal response."""
+    product = _demo_product("SKU-MERCH-HIGH-TEST", current_inventory=50)
+    product["qty_breaks"] = [{"min_qty": 10, "discount_pct": 22}, {"min_qty": 25, "discount_pct": 26}]
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    orders = []  # new buyer -- combined with qty=10 (large request) -> HIGH
+
+    def _run(tier, audit_path):
+        buyer = BuyerAgent(
+            qty=10, opening_discount_pct=15, max_acceptable_price=policy["list_price"], list_price=policy["list_price"],
+        )
+        return run_full_transaction(
+            policy, buyer, audit_path=str(audit_path), payment_client=SpyClient(),
+            approval_confirm=lambda message: True,
+            buyer_id="BUYER-MERCH-HIGH-TEST", orders=orders, risk_approval_tier=tier,
+        )
+
+    standard_audit = tmp_path / "standard_high.log"
+    strict_audit = tmp_path / "strict_high.log"
+    standard_outcome = _run("standard", standard_audit)
+    strict_outcome = _run("strict", strict_audit)
+
+    assert standard_outcome["state"] == strict_outcome["state"] == "COMPLETED"
+    assert standard_outcome["offer"]["price"] == strict_outcome["offer"]["price"] == policy["list_price"]
+
+    standard_entries = _read_log(standard_audit)
+    strict_entries = _read_log(strict_audit)
+    standard_approval = next(e for e in standard_entries if e["action"] == "approval_requested")
+    strict_approval = next(e for e in strict_entries if e["action"] == "approval_requested")
+    assert standard_approval["rationale"] == strict_approval["rationale"]  # tier-independent for HIGH
+
+
 def test_established_buyer_normal_qty_proceeds_completely_unaffected(tmp_path):
     """Requirement #5's second explicit case: an established buyer with
     normal order history proceeds exactly as if the Risk Agent didn't
@@ -434,26 +541,62 @@ def test_established_buyer_normal_qty_proceeds_completely_unaffected(tmp_path):
     assert with_risk_check["offer"]["qty"] == without_risk_check["offer"]["qty"]
 
 
-def test_moderate_risk_logs_but_does_not_gate_or_restrict_pricing(tmp_path):
-    """Follow-up (2026-09-02, Section 2O, confirmed with the user): drops
-    forced human-approval from MODERATE risk entirely. MODERATE (exactly
-    one factor -- here, new_buyer alone, since qty stays below the
-    large-request threshold) now proceeds with ZERO added friction: no
-    approval gate, no discount restriction -- but still logs a
-    risk_review audit entry naming the single factor, so it stays
-    visible/explainable without adding friction. Distinct from HIGH
-    (both factors), which still forces the gate AND caps
-    max_discount_pct to 0 -- see
-    test_high_risk_forces_list_price_only_and_still_requires_human_approval
-    below."""
-    audit_path = tmp_path / "negotiation.log"
-    product = _demo_product("SKU-RISK-003", current_inventory=50, cost=10.0, min_price=15.0)
-    product["list_price"] = 20.0
-    product["max_discount_pct"] = 5
-    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
-    orders = []  # new buyer -- the sole risk factor here (qty=1 stays below the large-request threshold)
+def test_moderate_risk_applies_a_partial_discount_reduction_between_none_and_high(tmp_path):
+    """Follow-up (2026-09-03, Section 2S, confirmed with the user: 25%
+    reduction factor): the Risk Agent's discount handling is a genuine
+    three-level GRADIENT now, not just full-vs-zero. Proves a strict,
+    measurable ordering -- NONE < MODERATE < HIGH -- of the effective
+    floor for the SAME product economics (list_price=1000,
+    max_discount_pct=20%, qty_breaks=[] -- with no qty_breaks tiers, the
+    floor formula list_price*(1-pct/100) is qty-independent, so using
+    qty=10 only to trigger HIGH's second "large_request" factor doesn't
+    change what's actually being compared -- the same product's floor
+    under three different discount ceilings):
 
-    buyer = BuyerAgent(qty=1, opening_discount_pct=5, max_acceptable_price=20.0, list_price=policy["list_price"])
+    - NONE (established buyer, qty=1): full 20% -> floor 800.00.
+    - MODERATE (new buyer, qty=1 -- single factor only): 20% * 0.25 = 5%
+      -> floor 950.00 -- measurably higher than NONE, measurably lower
+      than HIGH.
+    - HIGH (new buyer AND qty=10 -- both factors): 20% * 0.0 = 0% ->
+      floor 1000.00 (== list_price).
+
+    Also confirms MODERATE still forces NO approval (Section 2O,
+    unchanged by this milestone -- only the discount ceiling changed,
+    not the approval-gate behavior), end to end through
+    run_full_transaction(), and that the risk_review rationale states
+    the reduction percentage AND the concrete recomputed floor inline
+    (same "state the actual number" pattern as the HIGH-risk fix)."""
+    from src.agents.merchant_agent import _floor_price
+
+    product = _demo_product("SKU-RISK-GRADIENT", current_inventory=50, cost=500.0, min_price=700.0)
+    product["list_price"] = 1000.0
+    product["max_discount_pct"] = 20
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+
+    established_orders = [{"buyer_id": "BUYER-ESTABLISHED-GRAD", "amount": 500.0} for _ in range(5)]
+    new_buyer_orders = []
+
+    none_risk = personalization.risk_assessment("BUYER-ESTABLISHED-GRAD", qty=1, qty_breaks=policy["qty_breaks"], orders=established_orders)
+    assert none_risk["level"] == "none"
+    none_floor, _ = _floor_price(personalization.apply_risk_discount_cap(policy, none_risk), qty=1)
+
+    moderate_risk = personalization.risk_assessment("BUYER-NEW-GRAD", qty=1, qty_breaks=policy["qty_breaks"], orders=new_buyer_orders)
+    assert moderate_risk["level"] == "moderate"
+    moderate_floor, _ = _floor_price(personalization.apply_risk_discount_cap(policy, moderate_risk), qty=1)
+
+    high_risk = personalization.risk_assessment("BUYER-NEW-GRAD", qty=10, qty_breaks=policy["qty_breaks"], orders=new_buyer_orders)
+    assert high_risk["level"] == "high"
+    high_floor, _ = _floor_price(personalization.apply_risk_discount_cap(policy, high_risk), qty=10)
+
+    assert none_floor == 800.0
+    assert moderate_floor == 950.0
+    assert high_floor == 1000.0 == policy["list_price"]
+    assert none_floor < moderate_floor < high_floor  # the real, measurable three-way gradient
+
+    # End to end: MODERATE still forces no approval, and settles at the
+    # reduced (not zeroed, not full) ceiling.
+    audit_path = tmp_path / "negotiation.log"
+    buyer = BuyerAgent(qty=1, opening_discount_pct=5, max_acceptable_price=1000.0, list_price=policy["list_price"])
     approval_calls = []
 
     def _approve(message):
@@ -463,17 +606,12 @@ def test_moderate_risk_logs_but_does_not_gate_or_restrict_pricing(tmp_path):
     outcome = run_full_transaction(
         policy, buyer, audit_path=str(audit_path), payment_client=SpyClient(),
         product=product, catalog_path=None, approval_confirm=_approve,
-        buyer_id="BUYER-BRAND-NEW-2", orders=orders,
+        buyer_id="BUYER-NEW-GRAD", orders=new_buyer_orders,
     )
 
     assert outcome["state"] == "COMPLETED"
-    assert approval_calls == []  # the gate was NEVER triggered -- zero added friction
-    # Normal discount still fully available -- NOT forced to list_price
-    # (that's HIGH-only behavior). max_discount_pct=5% -> floor 19.00,
-    # below list_price (20.00).
-    expected_floor = round(policy["list_price"] * (1 - policy["max_discount_pct"] / 100), 2)
-    assert expected_floor < policy["list_price"]
-    assert outcome["offer"]["price"] == expected_floor
+    assert approval_calls == []  # unchanged from Section 2O -- MODERATE still doesn't gate
+    assert outcome["offer"]["price"] == moderate_floor  # 950.00 -- not 800 (NONE), not 1000 (HIGH)
 
     entries = _read_log(audit_path)
     assert not any(e["action"] == "approval_requested" for e in entries)  # gate never fired at all
@@ -481,6 +619,9 @@ def test_moderate_risk_logs_but_does_not_gate_or_restrict_pricing(tmp_path):
     assert "new buyer" in risk_entry["rationale"]
     assert "large request" not in risk_entry["rationale"]  # only the one factor is present
     assert risk_entry["evidence_paths"] == ["buyer.order_history"]
+    assert "Discount ceiling reduced to 25% of normal" in risk_entry["rationale"]
+    assert f"Effective floor for this negotiation: {moderate_floor:.2f}" in risk_entry["rationale"]
+    assert "No approval required at this risk level for this merchant." in risk_entry["rationale"]
 
 
 def test_qty_exceeding_inventory_routes_to_rollback_without_calling_payment_service(tmp_path):

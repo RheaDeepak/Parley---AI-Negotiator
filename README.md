@@ -59,6 +59,22 @@ the guardrails read (min_price, max_discount_pct, qty_breaks, ...),
 applying an LTV-based discount bonus and an inventory-liquidation floor
 relaxation for aged stock -- both computed in code, never left to the LLM.
 
+**Multi-merchant support (`data/merchants.json`):** two merchant
+profiles, each tagged onto a whole slice of the catalog by category
+(`Voltstream Electronics`, tech/gear-adjacent categories; `Hearth & Home
+Living`, home/lifestyle categories). What actually varies between them
+today is one behavioral field, `risk_approval_tier`: `"standard"` (only
+HIGH risk forces human approval, the Section 2O default) or `"strict"`
+(MODERATE risk forces it too -- the exact same approval-gate mechanism
+in `run_full_transaction()`, just triggered at a lower risk tier for
+that merchant). The other profile fields (payment methods, shipping
+rules, return policy) are descriptive data only -- they're displayed and
+carried through the profile, not yet wired into any guardrail or pricing
+decision. Negotiation/guardrail/liquidation/LTV logic itself is
+completely unaware of which merchant is involved; `risk_assessment()`'s
+none/moderate/high computation stays purely about the buyer and
+quantity, same as before this feature existed.
+
 **Payment simulation boundary:** Razorpay's real flow needs a browser
 Checkout step between order creation and capture, which a headless CLI
 loop doesn't have. So `payment_service.create_order()` makes a real
@@ -184,9 +200,10 @@ Requires `BUYER_ID` (the check only runs when a buyer is identifiable).
 `BUYER-001` is the seed=42 dataset's one buyer with zero prior orders:
 
 ```bash
-# MODERATE -- one factor (new buyer). Proceeds with ZERO added friction --
-# no forced approval, pricing untouched -- but still logs a risk_review
-# audit entry naming the factor, for visibility without friction.
+# MODERATE -- one factor (new buyer). No forced approval (by default --
+# see the strict-merchant example above), but the discount ceiling IS
+# reduced to 25% of normal (not zeroed) -- still logs a risk_review audit
+# entry naming the factor and the reduced ceiling.
 PRODUCT_ID=SKU-ELEC-007 BUYER_ID=BUYER-001 python -m src.negotiation_loop
 
 # HIGH -- both factors (new buyer + large request, via DEMO_QTY >= 10).
@@ -240,22 +257,37 @@ choices given the time available:
   a buyer with fewer than 2 prior orders is flagged "new"; a request at
   or above the product's own bulk-tier quantity (`qty_breaks`, 10 units
   in the generated catalog) is flagged "large". Reframed as a
-  PRICING-ABUSE signal, not a trust/fraud one: **HIGH** (both factors)
-  no longer blocks the negotiation -- it forces `max_discount_pct` to 0
-  for that one negotiation (full list price, no room to haggle) via
-  `apply_risk_discount_cap()`, feeding straight into the same
-  `check_guardrails()`/`_floor_price()` mechanism every other policy
-  field already flows through, plus forces the human-approval gate.
-  **MODERATE** (exactly one factor) proceeds with zero added friction --
-  no forced approval, pricing untouched. Neither -> no effect. Every
-  flagged assessment (MODERATE and HIGH) is logged as a `risk_review`
-  audit entry naming the
-  specific factors and,
-  for HIGH, that the discount cap was applied. `audit_logger.log_entry`'s
-  shared call, used directly by every agent including this one, still
+  PRICING-ABUSE signal, not a trust/fraud one -- both non-`none` levels
+  tighten the discount ceiling via `apply_risk_discount_cap()` (feeding
+  straight into the same `check_guardrails()`/`_floor_price()` mechanism
+  every other policy field already flows through), as a genuine
+  three-level gradient: **HIGH** (both factors) scales `max_discount_pct`
+  and every `qty_breaks` tier to 0% (full list price, no room to
+  haggle), plus forces the human-approval gate. **MODERATE** (exactly
+  one factor) scales them to 25% of normal -- a real, partial reduction,
+  not zero -- with no forced approval by default (a "strict" merchant
+  changes that, see above; pricing is unaffected by the merchant tier
+  either way). Neither -> no effect. Every flagged assessment (MODERATE
+  and HIGH) is logged as a `risk_review` audit entry naming the specific
+  factors, the reduction applied, and the resulting effective floor.
+  `audit_logger.log_entry`'s shared call, used directly by every agent
+  including this one, still
   plays the role `AGENTS.md`'s `auditor-agent` name describes -- there's
   no separate networked agent
   process, consistent with the single-process scoping above.
+- **Multi-merchant: implemented for one behavioral field (Milestone 6).**
+  `data/merchants.json` holds two full profiles (name, description,
+  payment methods, shipping rules, return policy), and every catalog
+  product is tagged with a `merchant_id` by category. Only
+  `risk_approval_tier` is actually wired into behavior today -- it
+  varies whether the Risk Agent's approval gate fires on MODERATE risk,
+  per merchant (see the Architecture section above). The other profile
+  fields are real data, displayed at negotiation start and available to
+  read, but not yet enforced anywhere (e.g. `supported_payment_methods`
+  isn't checked against how a payment is made; `shipping_rules`/
+  `return_policy` aren't referenced by any guardrail).
+  `transaction_approval_threshold` and `max_negotiation_rounds` also stay
+  global constants, not per-merchant fields, in this build.
 - **Payment outcome is simulated, not a real Checkout capture.** See
   "Payment simulation boundary" above -- a deliberate consequence of this
   being a headless CLI flow with no browser step, not a shortcut around
