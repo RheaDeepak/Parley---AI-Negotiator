@@ -367,8 +367,19 @@ def test_liquidation_lowers_the_effective_floor_measurably_even_when_discount_ca
     assert aged_entry["offer"]["price"] < fresh_entry["offer"]["price"]
     assert aged_entry["evidence_paths"] == ["policy.min_price"]  # fully ramped -- min_price now the binding term
 
-    raw_log = aged_audit.read_text(encoding="utf-8")
-    assert "1000" not in raw_log  # Layer 2's invalid proposal never leaked through
+    # Layer 2's invalid proposal (price=1000.0) must never leak through --
+    # checked against the SPECIFIC fields that would actually indicate a
+    # leak (every logged offer price; rationale text), not the raw log
+    # text as a whole. A raw-text substring check would also match inside
+    # negotiation_id/decision_id, which are random hex and can
+    # coincidentally contain any digit substring by design -- that
+    # produced a real, if rare, false-positive failure in practice.
+    aged_entries = _read_log(aged_audit)
+    for entry in aged_entries:
+        offer = entry.get("offer")
+        if offer is not None and offer.get("price") is not None:
+            assert offer["price"] != 1000.0, f"invalid proposal leaked into a logged offer price: {entry}"
+        assert "1000" not in entry.get("rationale", ""), f"invalid proposal leaked into rationale text: {entry}"
 
 
 def test_liquidation_partial_ramp_still_cites_max_discount_pct_while_measurably_lowering_the_floor():

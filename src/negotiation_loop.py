@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 
 from src import personalization
@@ -23,7 +24,10 @@ def _log(on_event, round_num, *args, **kwargs):
     return entry
 
 
-def _log_buyer_strategy_if_present(buyer, audit_path, on_event, round_num):
+def _log_buyer_strategy_if_present(
+    buyer, audit_path, on_event, round_num, negotiation_id=None, product_name=None, list_price=None,
+    merchant_id=None,
+):
     """Logs the AI buyer's private reasoning (NEGOTIATION_SPEC.md Section
     4B) via the existing, unmodified log_entry() -- no-ops for the
     scripted BuyerAgent, which has no last_strategy attribute."""
@@ -34,11 +38,22 @@ def _log_buyer_strategy_if_present(buyer, audit_path, on_event, round_num):
         f"{strategy['strategy_note']} "
         f"(private: target_price={strategy['target_price']}, walk_away_price={strategy['walk_away_price']})"
     )
-    _log(on_event, round_num, "buyer-agent", "buyer_strategy", None, rationale, [], path=audit_path)
+    _log(
+        on_event, round_num, "buyer-agent", "buyer_strategy", None, rationale, [],
+        path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price,
+        merchant_id=merchant_id,
+    )
 
 
-def _log_buyer_unavailable(exc, audit_path, on_event, round_num):
-    _log(on_event, round_num, "buyer-agent", "buyer_unavailable", None, str(exc), [], path=audit_path)
+def _log_buyer_unavailable(
+    exc, audit_path, on_event, round_num, negotiation_id=None, product_name=None, list_price=None,
+    merchant_id=None,
+):
+    _log(
+        on_event, round_num, "buyer-agent", "buyer_unavailable", None, str(exc), [],
+        path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price,
+        merchant_id=merchant_id,
+    )
 
 
 def run_negotiation(
@@ -100,6 +115,27 @@ def run_negotiation(
     round_num = 1
     history = []
     risk_level = None
+    # Milestone 7 (Section 4D): generated ONCE, first thing, before any
+    # entry this negotiation produces is logged -- threaded through every
+    # _log()/_log_buyer_strategy_if_present()/_log_buyer_unavailable()
+    # call below, and returned on every terminal outcome so
+    # run_full_transaction() can carry it into the payment-phase entries
+    # too. A plain top-level field on every entry (audit_logger.log_entry()),
+    # not nested -- a single groupby("negotiation_id") is enough to
+    # reconstruct one negotiation's full entry set from a combined log.
+    negotiation_id = uuid.uuid4().hex
+    # Section 4D follow-up: captured once, same place/reasoning as
+    # negotiation_id above -- both already sit on `policy` as passed in,
+    # no new parameter needed. Omitted (None) for any policy dict lacking
+    # these keys (pre-Milestone-7 test fixtures), so log_entry() drops
+    # them from the entry exactly like negotiation_id.
+    product_name = policy.get("product_name")
+    list_price = policy.get("list_price")
+    # Section 4D third follow-up: same capture-once-and-thread treatment,
+    # for Milestone 6's multi-merchant `merchant_id` field -- lets a
+    # dashboard/report distinguish negotiations by merchant instead of
+    # aggregating everyone together.
+    merchant_id = policy.get("merchant_id")
 
     if buyer_id is not None and orders is not None:
         risk = personalization.risk_assessment(buyer_id, buyer.qty, policy.get("qty_breaks", []), orders)
@@ -140,15 +176,30 @@ def run_negotiation(
             # as "Payment phase" (Milestone 2/3c convention); this check
             # runs BEFORE round 1, not during payment, so 0 reads
             # correctly as "before round 1" on the console.
-            _log(on_event, 0, "risk-agent", "risk_review", None, rationale, risk["evidence_paths"], path=audit_path)
+            _log(
+                on_event, 0, "risk-agent", "risk_review", None, rationale, risk["evidence_paths"],
+                path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+            )
 
     try:
         current_offer = buyer.initial_offer()
     except BuyerUnavailableError as exc:
-        _log_buyer_unavailable(exc, audit_path, on_event, round_num)
-        return {"state": "BUYER_UNAVAILABLE", "offer": None}
-    _log_buyer_strategy_if_present(buyer, audit_path, on_event, round_num)
-    _log(on_event, round_num, "buyer-agent", "offer", current_offer, "", [], path=audit_path)
+        _log_buyer_unavailable(
+            exc, audit_path, on_event, round_num,
+            negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+        )
+        return {
+            "state": "BUYER_UNAVAILABLE", "offer": None, "negotiation_id": negotiation_id,
+            "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+        }
+    _log_buyer_strategy_if_present(
+        buyer, audit_path, on_event, round_num,
+        negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+    )
+    _log(
+        on_event, round_num, "buyer-agent", "offer", current_offer, "", [],
+        path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+    )
     history.append({"agent": "buyer-agent", "action": "offer", "offer": current_offer})
 
     while True:
@@ -156,28 +207,53 @@ def run_negotiation(
         _log(
             on_event, round_num, "merchant-agent", result["decision"], result["offer"],
             result["rationale"], result["evidence_paths"], path=audit_path,
-            guardrail_clamped=result.get("guardrail_clamped"),
+            guardrail_clamped=result.get("guardrail_clamped"), negotiation_id=negotiation_id,
+            product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
         history.append({"agent": "merchant-agent", "action": result["decision"], "offer": result["offer"]})
 
         if result["decision"] == "accept":
-            return {"state": "AGREEMENT_RECORDED", "offer": result["offer"], "risk_level": risk_level}
+            return {
+                "state": "AGREEMENT_RECORDED", "offer": result["offer"], "risk_level": risk_level,
+                "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            }
         if result["decision"] == "reject":
-            return {"state": "REJECTED", "offer": None}
+            return {
+                "state": "REJECTED", "offer": None, "negotiation_id": negotiation_id,
+                "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            }
 
         try:
             buyer_response = buyer.respond_to_counter(result["offer"])
         except BuyerUnavailableError as exc:
-            _log_buyer_unavailable(exc, audit_path, on_event, round_num)
-            return {"state": "BUYER_UNAVAILABLE", "offer": None}
-        _log_buyer_strategy_if_present(buyer, audit_path, on_event, round_num + 1)
+            _log_buyer_unavailable(
+                exc, audit_path, on_event, round_num,
+                negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+            )
+            return {
+                "state": "BUYER_UNAVAILABLE", "offer": None, "negotiation_id": negotiation_id,
+                "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            }
+        _log_buyer_strategy_if_present(
+            buyer, audit_path, on_event, round_num + 1,
+            negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+        )
         if buyer_response["accept"]:
-            _log(on_event, round_num + 1, "buyer-agent", "accept", result["offer"], "", [], path=audit_path)
-            return {"state": "AGREEMENT_RECORDED", "offer": result["offer"], "risk_level": risk_level}
+            _log(
+                on_event, round_num + 1, "buyer-agent", "accept", result["offer"], "", [],
+                path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+            )
+            return {
+                "state": "AGREEMENT_RECORDED", "offer": result["offer"], "risk_level": risk_level,
+                "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            }
 
         current_offer = buyer_response["offer"]
         round_num += 1
-        _log(on_event, round_num, "buyer-agent", "offer", current_offer, "", [], path=audit_path)
+        _log(
+            on_event, round_num, "buyer-agent", "offer", current_offer, "", [],
+            path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+        )
         history.append({"agent": "buyer-agent", "action": "offer", "offer": current_offer})
 
 
@@ -188,21 +264,29 @@ def _cli_confirm(message):
 
 def _attempt_payment(
     policy, offer, qty, total, audit_path, payment_client, force_payment_failure, on_event,
-    product, catalog_path, is_retry=False,
+    product, catalog_path, is_retry=False, negotiation_id=None, product_name=None, list_price=None,
+    merchant_id=None,
 ):
     """Shared by run_full_transaction() (the first, automatic attempt) and
     retry_payment() (an explicit, separate re-authorization -- Section
     3C). Exactly one payment_service.create_order() call per invocation,
     no internal loop or self-call -- "a failed payment is never
     automatically retried" is true by construction here, not by
-    convention; see retry_payment() and NEGOTIATION_SPEC.md Section 3C."""
+    convention; see retry_payment() and NEGOTIATION_SPEC.md Section 3C.
+
+    `negotiation_id` (Milestone 7, Section 4D): threaded through every
+    entry logged here, so a payment attempt's entries -- retry or not --
+    stay grouped with the negotiation that produced the offer being paid
+    for. `product_name`/`list_price` (same section, follow-up): same
+    treatment."""
     label = " (retry)" if is_retry else ""
     amount_paise = round(total * 100)
     payment = payment_service.create_order(amount_paise, policy["currency"], client=payment_client)
     _log(
         on_event, None, "merchant-agent", "payment_initiated", offer,
         f"Razorpay test-mode order {payment['order_id']} created for {total:.2f} {policy['currency']}{label}.",
-        [], path=audit_path, payment=payment,
+        [], path=audit_path, payment=payment, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
 
     result = payment_service.simulate_payment(payment, force_failure=force_payment_failure)
@@ -211,45 +295,57 @@ def _attempt_payment(
         _log(
             on_event, None, "merchant-agent", "payment_completed", offer,
             f"Payment for order {result['order_id']} completed{label}.",
-            [], path=audit_path, payment=result,
+            [], path=audit_path, payment=result, negotiation_id=negotiation_id,
+            product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
         if product is not None and catalog_path is not None:
             remaining = personalization.decrement_inventory(catalog_path, product["sku_id"], qty)
             _log(
                 on_event, None, "merchant-agent", "inventory_decremented", offer,
                 f"Decremented current_inventory for {product['sku_id']} by {qty}; {remaining} remaining.",
-                ["catalog.current_inventory"], path=audit_path,
+                ["catalog.current_inventory"], path=audit_path, negotiation_id=negotiation_id,
+                product_name=product_name, list_price=list_price, merchant_id=merchant_id,
             )
-        return {"state": "COMPLETED", "offer": offer, "payment": result}
+        return {
+            "state": "COMPLETED", "offer": offer, "payment": result, "negotiation_id": negotiation_id,
+            "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+        }
 
     _log(
         on_event, None, "merchant-agent", "payment_rollback", offer,
         f"Payment for order {result['order_id']} failed: {result['error_code']} - "
         f"{result['error_description']}. Rolling back{label}.",
-        [], path=audit_path, payment=result,
+        [], path=audit_path, payment=result, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
     _log(
         on_event, None, "merchant-agent", "inventory_release", offer,
         f"Releasing simulated inventory hold for qty {qty} of {policy['sku_id']} after payment rollback{label}.",
-        [], path=audit_path,
+        [], path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
     _log(
         on_event, None, "buyer-agent", "buyer_notification", offer,
         f"Your payment for {qty}x {policy['product_name']} could not be completed "
         f"({result['error_code']}). You were not charged; a retry may be offered.",
-        [], path=audit_path, payment=result,
+        [], path=audit_path, payment=result, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
     _log(
         on_event, None, "merchant-agent", "human_notification", offer,
         f"ALERT: payment for order {result['order_id']} failed ({result['error_code']}). Manual review required.",
-        [], path=audit_path, payment=result,
+        [], path=audit_path, payment=result, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
-    return {"state": "ROLLBACK", "offer": offer, "payment": result, "reason": "payment_failure"}
+    return {
+        "state": "ROLLBACK", "offer": offer, "payment": result, "reason": "payment_failure",
+        "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+    }
 
 
 def retry_payment(
     offer, policy, audit_path=DEFAULT_AUDIT_PATH, payment_client=None,
-    force_payment_failure=False, on_event=None, product=None, catalog_path=None,
+    force_payment_failure=False, on_event=None, product=None, catalog_path=None, negotiation_id=None,
+    product_name=None, list_price=None, merchant_id=None,
 ):
     """The ONLY way a previously-failed payment is ever retried --
     NEVER called automatically by run_full_transaction() or
@@ -259,7 +355,17 @@ def retry_payment(
     offer's own `expiration` timestamp as the retry window -- no second,
     unrelated timer. Raises ValueError if the offer has already expired;
     retrying against an expired offer is refused, a fresh negotiation is
-    required instead."""
+    required instead.
+
+    `negotiation_id` (Milestone 7, Section 4D, optional -- default None
+    for backward compatibility with any pre-Milestone-7 caller): the
+    ORIGINAL negotiation's id, from that negotiation's own outcome dict.
+    A retry is meaningless without knowing which negotiation it belongs
+    to, but this stays optional rather than required so existing callers
+    that never captured it don't break -- entries just won't carry the
+    grouping key in that case, same as any other None-negotiation_id
+    entry. `product_name`/`list_price` (same section, follow-up): same
+    optional-passthrough treatment."""
     expiration = datetime.strptime(offer["expiration"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) >= expiration:
         raise ValueError(
@@ -274,17 +380,18 @@ def retry_payment(
         on_event, None, "merchant-agent", "payment_retry_approved", offer,
         f"Explicit re-authorization: retrying payment for offer {offer['offer_id']} "
         f"(still valid until {offer['expiration']}).",
-        [], path=audit_path,
+        [], path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
     _log(
         on_event, None, "merchant-agent", "inventory_hold", offer,
         f"Re-placing simulated inventory hold for qty {qty} of {policy['sku_id']} for payment retry.",
-        [], path=audit_path,
+        [], path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
 
     return _attempt_payment(
         policy, offer, qty, total, audit_path, payment_client, force_payment_failure, on_event,
-        product, catalog_path, is_retry=True,
+        product, catalog_path, is_retry=True, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
 
 
@@ -326,8 +433,24 @@ def run_full_transaction(
         policy, buyer, audit_path=audit_path, merchant_evaluate=merchant_evaluate, on_event=on_event,
         buyer_id=buyer_id, orders=orders, risk_approval_tier=risk_approval_tier,
     )
+    # Milestone 7 (Section 4D): every payment-phase entry this function
+    # logs below carries the SAME negotiation_id run_negotiation() just
+    # generated, so a negotiation's negotiation + payment entries group
+    # together as one unit.
+    negotiation_id = negotiation_outcome.get("negotiation_id")
+    # Section 4D follow-up: carried forward the same way as negotiation_id
+    # above, from run_negotiation()'s own outcome dict -- not re-read from
+    # `policy` here, since risk-driven repricing may have replaced the
+    # local `policy` reference inside run_negotiation() without mutating
+    # the caller's original dict.
+    product_name = negotiation_outcome.get("product_name")
+    list_price = negotiation_outcome.get("list_price")
+    merchant_id = negotiation_outcome.get("merchant_id")
     if negotiation_outcome["state"] != "AGREEMENT_RECORDED":
-        return {"state": negotiation_outcome["state"], "offer": None, "payment": None}
+        return {
+            "state": negotiation_outcome["state"], "offer": None, "payment": None,
+            "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+        }
 
     offer = negotiation_outcome["offer"]
     qty = offer["qty"]
@@ -358,16 +481,20 @@ def run_full_transaction(
         _log(
             on_event, None, "merchant-agent", "insufficient_inventory", offer,
             f"{reason_desc}; rolling back before any payment call.",
-            ["catalog.current_inventory"], path=audit_path,
+            ["catalog.current_inventory"], path=audit_path, negotiation_id=negotiation_id,
+            product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
         _log(
             on_event, None, "merchant-agent", "human_notification", offer,
             f"ALERT: agreed deal for {qty}x {product['sku_id']} cannot be fulfilled "
             f"({'only ' + str(product['current_inventory']) + ' in stock' if real_inventory_shortfall else f'only {simulated_stock} in stock (simulated for demo)'}). "
             "Manual review required.",
-            [], path=audit_path,
+            [], path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
-        result = {"state": "ROLLBACK", "offer": offer, "payment": None, "reason": "insufficient_inventory"}
+        result = {
+            "state": "ROLLBACK", "offer": offer, "payment": None, "reason": "insufficient_inventory",
+            "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+        }
         if not real_inventory_shortfall:
             result["simulated_stock"] = simulated_stock
         return result
@@ -375,7 +502,7 @@ def run_full_transaction(
     _log(
         on_event, None, "merchant-agent", "inventory_hold", offer,
         f"Placing simulated inventory hold for qty {qty} of {policy['sku_id']} pending payment.",
-        [], path=audit_path,
+        [], path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
 
     risk_level = negotiation_outcome.get("risk_level")
@@ -413,7 +540,8 @@ def run_full_transaction(
             )
             evidence = ["risk_agent.risk_level", "merchant.risk_approval_tier"]
         _log(
-            on_event, None, "merchant-agent", "approval_requested", offer, reason, evidence, path=audit_path,
+            on_event, None, "merchant-agent", "approval_requested", offer, reason, evidence,
+            path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
         confirm = approval_confirm or _cli_confirm
         approved = confirm(
@@ -423,18 +551,23 @@ def run_full_transaction(
             _log(
                 on_event, None, "merchant-agent", "approval_declined", offer,
                 "Human declined the approval gate; payment_service was not called.",
-                evidence, path=audit_path,
+                evidence, path=audit_path, negotiation_id=negotiation_id,
+                product_name=product_name, list_price=list_price, merchant_id=merchant_id,
             )
-            return {"state": "APPROVAL_DECLINED", "offer": offer, "payment": None}
+            return {
+                "state": "APPROVAL_DECLINED", "offer": offer, "payment": None, "negotiation_id": negotiation_id,
+                "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            }
         _log(
             on_event, None, "merchant-agent", "approval_granted", offer,
             "Human approved the transaction via the CLI gate.",
-            evidence, path=audit_path,
+            evidence, path=audit_path, negotiation_id=negotiation_id,
+            product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
 
     return _attempt_payment(
         policy, offer, qty, total, audit_path, payment_client, force_payment_failure, on_event,
-        product, catalog_path,
+        product, catalog_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
     )
 
 

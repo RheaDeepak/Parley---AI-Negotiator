@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Parley Negotiation Dashboard</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card-bg: #ffffff;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --green-bg: #dcfce7; --green-text: #166534;
+    --red-bg: #fee2e2; --red-text: #991b1b;
+    --amber-bg: #fef3c7; --amber-text: #92400e;
+    --gray-bg: #e5e7eb; --gray-text: #374151;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  h1 { margin: 0 0 4px 0; font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 28px 0; }
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px; margin-bottom: 32px;
+  }
+  .stat-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-value { font-size: 24px; font-weight: 600; margin-top: 6px; }
+  .table-scroll {
+    overflow-x: auto; background: var(--card-bg);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  table {
+    width: 100%; min-width: 560px; border-collapse: collapse;
+  }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { background: #fafbfc; font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); }
+  td.empty { text-align: center; color: var(--muted); padding: 24px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .outcome-accepted { background: var(--green-bg); color: var(--green-text); }
+  .outcome-rejected { background: var(--red-bg); color: var(--red-text); }
+  .outcome-rolledback { background: var(--amber-bg); color: var(--amber-text); }
+  .outcome-other { background: var(--gray-bg); color: var(--gray-text); }
+  h2 { font-size: 16px; margin: 0 0 12px 0; }
+  .note { font-size: 12px; color: var(--muted); margin: 10px 2px 0 2px; }
+  footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --card-bg: #1e2128; --text: #e6e8eb; --muted: #9aa1ac; --border: #2b2f38;
+      --green-bg: #113321; --green-text: #4ade80;
+      --red-bg: #3a1414; --red-text: #f87171;
+      --amber-bg: #3a2c0f; --amber-text: #fbbf24;
+      --gray-bg: #2b2f38; --gray-text: #b8bec9;
+    }
+    th { background: #1a1d23; }
+  }
+</style>
+</head>
+<body>
+  <h1>Parley Negotiation Dashboard</h1>
+  <p class="subtitle">Generated from audits/negotiation.log (25 entries), audits/dashboard_seed.log (757 entries). 130 negotiations grouped by negotiation_id.</p>
+
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">Total negotiations</div><div class="stat-value">130</div></div>
+    <div class="stat-card"><div class="stat-label">Accepted</div><div class="stat-value">82</div></div>
+    <div class="stat-card"><div class="stat-label">Rejected</div><div class="stat-value">41</div></div>
+    <div class="stat-card"><div class="stat-label">Rolled back</div><div class="stat-value">7</div></div>
+    <div class="stat-card"><div class="stat-label">Avg rounds</div><div class="stat-value">1.16</div></div>
+    <div class="stat-card"><div class="stat-label">Avg discount</div><div class="stat-value">10.9%</div></div>
+    <div class="stat-card"><div class="stat-label">Total revenue</div><div class="stat-value">INR 2,149,955.95</div></div>
+  </div>
+  
+  <p class="note">25 log entries had no negotiation_id (pre-Milestone-7 data) and could not be attributed to a specific negotiation, so they are excluded from every stat and table row on this page.</p>
+
+  <h2>By Merchant</h2>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Merchant</th><th>Total</th><th>Accepted</th><th>Rejected</th><th>Rolled back</th><th>Avg discount</th><th>Revenue</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Voltstream Electronics</td><td class="num">69</td><td class="num">46</td><td class="num">18</td><td class="num">5</td><td class="num">11.1%</td><td class="num">INR 1,539,017.12</td></tr>
+<tr><td>Hearth &amp; Home Living</td><td class="num">61</td><td class="num">36</td><td class="num">23</td><td class="num">2</td><td class="num">10.6%</td><td class="num">INR 610,938.83</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 style="margin-top: 32px;">Recent Negotiations</h2>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Negotiation ID</th><th>Product</th><th>Merchant</th><th>Final price</th><th>Outcome</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono" title="69c8c5862dcf452fbc323becf24a581e">69c8c5862dcf…</td><td>Leather Belt</td><td>Hearth &amp; Home Living</td><td class="num">INR 2,141.55</td><td><span class="badge outcome-rolledback">Rolled back</span></td></tr>
+<tr><td class="mono" title="db80d1f03acd4cf2bf600c192a62d247">db80d1f03acd…</td><td>Ride-On Toy Car</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="5fa3d6bbb7ac43feb67ef9435ee464ae">5fa3d6bbb7ac…</td><td>Stapler &amp; Punch Set</td><td>Voltstream Electronics</td><td class="num">INR 483.71</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="9d5fbcdad8d944909f270905309e99db">9d5fbcdad8d9…</td><td>Wireless Mechanical Keyboard</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="eeac86a926e3473290cd02634adeae58">eeac86a926e3…</td><td>Children&#x27;s Picture Book Set</td><td>Hearth &amp; Home Living</td><td class="num">INR 246.36</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="c20b5796a56e4c69967ba94acd4a8185">c20b5796a56e…</td><td>Smart LED Desk Lamp</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="ec43570eea7d46ec83030d25120b349a">ec43570eea7d…</td><td>Badminton Racquet Pair</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="baebcce5ca5c4a04bffcc8dea5532f60">baebcce5ca5c…</td><td>Blackout Curtain Pair</td><td>Hearth &amp; Home Living</td><td class="num">INR 3,591.04</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="c89a333e5a864e129ae05d7b2a9dab3d">c89a333e5a86…</td><td>Facial Cleansing Brush</td><td>Hearth &amp; Home Living</td><td class="num">INR 1,833.56</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="658a449efa65422fb223142364f6a487">658a449efa65…</td><td>2m HDMI Cable</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="f1dfc379485746918491857941695878">f1dfc3794857…</td><td>Trekking Backpack</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="5d67cc13b15c4ba1b84770ea43b1044b">5d67cc13b15c…</td><td>1080p Webcam</td><td>Voltstream Electronics</td><td class="num">INR 3,804.08</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="0782caf4b0c34b558f20876ccfe8b0e6">0782caf4b0c3…</td><td>Gel Pen Set</td><td>Voltstream Electronics</td><td class="num">INR 769.07</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="7201a40d90f34ac6bfc08d46e1e18e77">7201a40d90f3…</td><td>Facial Cleansing Brush</td><td>Hearth &amp; Home Living</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="5eb1355a835e48659ee1d7c6f5c266df">5eb1355a835e…</td><td>Whiteboard (Small)</td><td>Voltstream Electronics</td><td class="num">INR 230.73</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="3742dbf7f2e449898402b9e579f2949f">3742dbf7f2e4…</td><td>Slim-Fit Denim Jeans</td><td>Hearth &amp; Home Living</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="1b6da808cd8f491db9f93f69fb5d990e">1b6da808cd8f…</td><td>Moisturizing Body Lotion</td><td>Hearth &amp; Home Living</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+<tr><td class="mono" title="c7269ae76b6f41449f07448e67f9a499">c7269ae76b6f…</td><td>Ergonomic Office Chair</td><td>Voltstream Electronics</td><td class="num">INR 1,082.43</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="37a9a6ca335644009118152ae71d5ba7">37a9a6ca3356…</td><td>Trekking Backpack</td><td>Voltstream Electronics</td><td class="num">INR 4,984.10</td><td><span class="badge outcome-accepted">Accepted</span></td></tr>
+<tr><td class="mono" title="12faa6bf07c4488a847ee218fea7d73c">12faa6bf07c4…</td><td>Insulated Water Bottle</td><td>Voltstream Electronics</td><td class="num">—</td><td><span class="badge outcome-rejected">Rejected</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Generated by scripts/generate_dashboard.py &middot; 2026-09-04T06:22:35Z</footer>
+</body>
+</html>

@@ -2161,6 +2161,117 @@ neither may be present on a given entry.
 
 ---
 
+## Section 4D — `negotiation_id` grouping field (Milestone 7)
+
+Before this section, audit entries carried only a per-action `decision_id`
+(a fresh UUID on every single `log_entry()` call) — no field linked
+together the entries produced by one negotiation, including its later
+payment-phase entries. Milestone 7's dashboard needs to tell where one
+negotiation ends and the next begins across a combined multi-file log, so
+this section adds exactly one new field to close that gap.
+
+| Field | Value |
+|---|---|
+| `negotiation_id` | 32-char lowercase hex (`uuid.uuid4().hex`), generated **once**, as the very first thing `run_negotiation()` does — before any entry that negotiation produces is logged. Threaded through every `log_entry()` call for that negotiation's rounds, and carried forward by `run_full_transaction()` into every entry of that negotiation's payment phase (`inventory_hold`, `payment_initiated`, `payment_completed`/`payment_rollback`, `inventory_release`, notifications). An explicit `retry_payment()` call also carries it, if the caller passes the original negotiation's id back in — `retry_payment()`'s `negotiation_id` parameter defaults to `None` for backward compatibility with any pre-Milestone-7 caller that never captured one. |
+
+A plain top-level field, sibling to `decision_id` — **not** nested inside
+`offer`/`payment`/anything else — so grouping a combined log is a single
+`groupby("negotiation_id")` (after sorting by timestamp, since two
+separately-written log files won't keep one negotiation's entries
+contiguous), no nested lookups required.
+
+Treated as identity/session metadata, the same as `decision_id` and
+`timestamp`: it describes *which run* produced an entry, not *what was
+decided*, so it is **not** part of `decision_hash`'s input — `decision_hash`
+stays exactly as defined in Section 4C. Omitted from the entry dict
+entirely when `None` (every pre-Milestone-7 caller/test, and any entry
+logged outside a `run_negotiation()`/`run_full_transaction()` context),
+matching the existing `payment`/`guardrail_clamped` "only present when
+meaningful" convention — so no prior entry shape or hash changes.
+
+### Example entry
+
+```json
+{"timestamp": "2026-09-03T09:12:04Z", "decision_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", "agent": "merchant-agent", "action": "counter", "offer": {"offer_id": "...", "price": 4399.12, "qty": 1, "terms": "", "expiration": "...", "timestamp": "..."}, "rationale": "...", "evidence_paths": ["policy.max_discount_pct"], "decision_hash": "...", "provenance_sha": "UNVERIFIED", "negotiation_id": "01ba523c71984b13b77f7f3f28cad922"}
+```
+
+Live-verified: a full negotiation-to-payment run (offer → counter → accept
+→ inventory_hold → payment_initiated → payment_completed) produced 6
+entries sharing one `negotiation_id`; a rollback-then-explicit-retry run
+produced 13 entries (9 from the failed attempt, 4 from the retry) all
+sharing the same `negotiation_id` when the caller passed it through to
+`retry_payment()`.
+
+### Follow-up — `product_name` / `list_price` (same day, before bulk seed generation)
+
+Building the dashboard generator surfaced a second gap of the same kind:
+no entry recorded *which product* a negotiation was for, or its
+`list_price` — both needed for the dashboard's "Recent Negotiations"
+product column and its "average discount % vs. list_price" stat. Neither
+required new plumbing: both already sit on the `policy` dict passed into
+`run_negotiation()`, so they're captured at the same place/time as
+`negotiation_id` (`policy.get("product_name")`, `policy.get("list_price")`)
+and threaded through every entry — negotiation rounds and payment phase —
+exactly like `negotiation_id` above, including into `retry_payment()` as
+two more optional (default `None`) parameters.
+
+| Field | Value |
+|---|---|
+| `product_name` | `policy["product_name"]` at negotiation start, or absent if the policy dict has none. |
+| `list_price` | `policy["list_price"]` at negotiation start, or absent if the policy dict has none. |
+
+Same rules as `negotiation_id`: plain top-level fields, **not** part of
+`decision_hash`'s input (context, not decision content), omitted from the
+entry entirely when `None`. `run_full_transaction()` reads them back from
+`run_negotiation()`'s own outcome dict (not by re-reading `policy`), since
+a risk-driven repricing inside `run_negotiation()` reassigns its local
+`policy` reference without mutating the caller's original dict.
+
+Live-verified alongside `negotiation_id`: all 6 entries of a completed
+negotiation-to-payment run carried the same `product_name`/`list_price`
+pair end to end.
+
+An entry logged before this fix (or via any policy dict lacking these
+keys) simply has no `product_name`/`list_price` — a dashboard consuming
+older log data should treat their absence as "unknown," never substitute
+a placeholder value.
+
+### Second follow-up — `merchant_id` (same day, after the dashboard shipped)
+
+The dashboard as first shipped had no way to tell which merchant a
+negotiation belonged to — every negotiation across both of Milestone 6's
+merchants (MERCH-001, MERCH-002) aggregated together with no visible
+distinction. `policy["merchant_id"]` (Milestone 6) was already available
+at the exact same capture point as `product_name`/`list_price`, so it
+gets the identical treatment: captured once at the top of
+`run_negotiation()`, threaded through every entry (negotiation rounds and
+payment phase alike), read back from `run_negotiation()`'s outcome dict
+by `run_full_transaction()` rather than re-read from `policy` (same
+risk-repricing-reassignment reasoning as above), not part of
+`decision_hash`'s input, omitted from the entry when `None`.
+
+| Field | Value |
+|---|---|
+| `merchant_id` | `policy["merchant_id"]` at negotiation start (e.g. `"MERCH-001"`), or absent if the policy dict has none (e.g. the single-SKU `merchant_policy.json` fallback, which predates multi-merchant support and carries no merchant_id at all). |
+
+Deliberately just the id, not the human-readable merchant name — resolving
+`MERCH-001` → `"Voltstream Electronics"` against `data/merchants.json` is
+left to whatever reads the log (the dashboard generator does this at
+render time), so the audit log itself doesn't repeat a static lookup's
+data on every entry.
+
+Live-verified: a real PRODUCT_ID-driven negotiation + payment run showed
+`merchant_id="MERCH-001"` (matching the catalog product's own
+`merchant_id`) on every logged entry, negotiation and payment phase both.
+
+`scripts/generate_dashboard.py` was updated to show a Merchant column on
+the Recent Negotiations table and a per-merchant stats breakdown, and
+`audits/dashboard_seed.log` was regenerated (same `--seed 42`, same 130
+negotiations, same outcome mix) so its entries carry `merchant_id` too —
+the previous seed batch predated this field.
+
+---
+
 ## Assumptions
 
 - Currency is INR: Razorpay is India-focused and `PROJECT_GUIDANCE.md` left
