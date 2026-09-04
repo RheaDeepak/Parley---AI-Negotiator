@@ -7,10 +7,19 @@ class BuyerAgent:
     the merchant's counter each round, never exceeding its own price
     ceiling (max_acceptable_price)."""
 
-    def __init__(self, qty, opening_discount_pct, max_acceptable_price, list_price):
+    def __init__(self, qty, opening_discount_pct, max_acceptable_price, list_price, starting_price=None):
+        """`starting_price` (Milestone 8, optional): a literal opening
+        offer price, used as-is instead of the computed
+        list_price*(1-discount%) value -- for a caller (src/api.py) whose
+        UI collects the buyer's actual opening number directly rather
+        than a discount percentage. None (every pre-Milestone-8 caller)
+        preserves the original computed-from-discount behavior exactly."""
         self.qty = qty
         self.max_acceptable_price = max_acceptable_price
-        self._current_price = round(list_price * (1 - opening_discount_pct / 100), 2)
+        if starting_price is not None:
+            self._current_price = round(starting_price, 2)
+        else:
+            self._current_price = round(list_price * (1 - opening_discount_pct / 100), 2)
 
     def initial_offer(self):
         return new_offer(self._current_price, self.qty)

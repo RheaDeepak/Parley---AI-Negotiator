@@ -58,7 +58,7 @@ def _log_buyer_unavailable(
 
 def run_negotiation(
     policy, buyer, audit_path=DEFAULT_AUDIT_PATH, merchant_evaluate=None, on_event=None,
-    buyer_id=None, orders=None, risk_approval_tier="standard",
+    buyer_id=None, orders=None, risk_approval_tier="standard", on_round_limit="walk_away",
 ):
     """Ties buyer-agent and merchant-agent together per
     NEGOTIATION_SPEC.md Section 3. Returns {"state": ..., "offer": ...}
@@ -110,7 +110,27 @@ def run_negotiation(
     is involved. Only changes what a "moderate" verdict means for THIS
     merchant: "strict" appends a note to the risk_review rationale here
     (the actual gating decision is made later, in run_full_transaction(),
-    which also receives risk_approval_tier directly for that)."""
+    which also receives risk_approval_tier directly for that).
+
+    `on_round_limit` (Milestone 8 frontend follow-up, default
+    "walk_away" -- every pre-existing caller behaves byte-identically):
+    decided upfront by the caller, before the negotiation starts -- not
+    a new stateful flow like the approval pause. "walk_away" (default)
+    is the original behavior, unchanged: hitting policy.max_negotiation_rounds
+    ends the negotiation REJECTED. "accept_final" instead treats the
+    merchant's own last real counter-offer (the last agent="merchant-agent"
+    "counter" entry in `history` -- a price that WAS already validated
+    against every guardrail when it was proposed, never a fabricated or
+    re-derived number) as accepted, and returns AGREEMENT_RECORDED with
+    it. Only fires for a round-cap rejection specifically -- identified by
+    "policy.max_negotiation_rounds" appearing in evidence_paths, which
+    check_guardrails() sometimes returns alongside a floor-evidence path
+    (e.g. ["policy.max_discount_pct", "policy.max_negotiation_rounds"]
+    when the final round's offer is still below the floor) and sometimes
+    alone -- membership, not exact-list equality, so both forms match.
+    An instant reject for an unrelated reason (e.g. below min_price on
+    the very first offer) never carries this evidence path and is
+    untouched by this flag."""
     merchant_evaluate = merchant_evaluate or merchant_agent.evaluate_rules
     round_num = 1
     history = []
@@ -218,6 +238,24 @@ def run_negotiation(
                 "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
             }
         if result["decision"] == "reject":
+            if on_round_limit == "accept_final" and "policy.max_negotiation_rounds" in result["evidence_paths"]:
+                last_merchant_counter = next(
+                    (h["offer"] for h in reversed(history) if h["agent"] == "merchant-agent" and h["action"] == "counter"),
+                    None,
+                )
+                if last_merchant_counter is not None:
+                    _log(
+                        on_event, round_num, "buyer-agent", "accept", last_merchant_counter,
+                        "Round limit reached; buyer accepts the merchant's last counter-offer "
+                        "(on_round_limit=accept_final).",
+                        ["policy.max_negotiation_rounds"], path=audit_path, negotiation_id=negotiation_id,
+                        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+                    )
+                    return {
+                        "state": "AGREEMENT_RECORDED", "offer": last_merchant_counter, "risk_level": risk_level,
+                        "negotiation_id": negotiation_id, "product_name": product_name,
+                        "list_price": list_price, "merchant_id": merchant_id,
+                    }
             return {
                 "state": "REJECTED", "offer": None, "negotiation_id": negotiation_id,
                 "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
@@ -260,6 +298,21 @@ def run_negotiation(
 def _cli_confirm(message):
     answer = input(f"{message} [y/n]: ").strip().lower()
     return answer == "y"
+
+
+# Milestone 8 (frontend/API): a sentinel, not a callable. A caller that
+# wants to PAUSE at the approval gate instead of resolving it synchronously
+# (e.g. src/api.py's POST /api/negotiate, which cannot block on input() or
+# an HTTP round-trip mid-request) passes this object as `approval_confirm`.
+# run_full_transaction() checks for it by identity (`is`) at the exact
+# point it would otherwise call confirm(message) -- every existing caller
+# passes either None or a real bool-returning callable, never this object,
+# so this is a zero-behavior-change addition for all of them. The resume
+# path (approved or declined, arriving later via POST /api/approve) is
+# handled by the caller directly logging the decision and, if approved,
+# calling _attempt_payment() -- the same shared function
+# run_full_transaction() itself calls, not a reimplementation.
+PAUSE_FOR_APPROVAL = object()
 
 
 def _attempt_payment(
@@ -400,6 +453,7 @@ def run_full_transaction(
     force_payment_failure=False, force_insufficient_inventory=False,
     approval_confirm=None, payment_client=None, merchant_evaluate=None, on_event=None,
     product=None, catalog_path=None, buyer_id=None, orders=None, risk_approval_tier="standard",
+    on_round_limit="walk_away",
 ):
     """Extends run_negotiation() with the payment phase per
     NEGOTIATION_SPEC.md Section 3A: AGREEMENT_RECORDED -> [inventory
@@ -428,10 +482,24 @@ def run_full_transaction(
     zero added friction, visible only via its risk_review audit entry.
     `risk_approval_tier` (Milestone 6, default "standard") changes that
     default per-merchant: "strict" also forces the gate on "moderate" --
-    see run_negotiation() for how the flag is resolved/threaded."""
+    see run_negotiation() for how the flag is resolved/threaded.
+
+    `approval_confirm=PAUSE_FOR_APPROVAL` (Milestone 8): returns a new
+    terminal state, "PENDING_APPROVAL", at the exact point the gate would
+    otherwise call confirm() -- for a caller (src/api.py) that cannot
+    resolve the gate synchronously. See PAUSE_FOR_APPROVAL's own comment
+    above _cli_confirm().
+
+    `on_round_limit` (Milestone 8 frontend follow-up, default
+    "walk_away"): passed straight through to run_negotiation() -- see
+    its own docstring. "accept_final" can turn what would have been a
+    round-cap REJECTED into an AGREEMENT_RECORDED, which then flows
+    through the normal inventory/approval/payment steps below exactly
+    like any other agreement -- nothing else in this function changes."""
     negotiation_outcome = run_negotiation(
         policy, buyer, audit_path=audit_path, merchant_evaluate=merchant_evaluate, on_event=on_event,
         buyer_id=buyer_id, orders=orders, risk_approval_tier=risk_approval_tier,
+        on_round_limit=on_round_limit,
     )
     # Milestone 7 (Section 4D): every payment-phase entry this function
     # logs below carries the SAME negotiation_id run_negotiation() just
@@ -543,6 +611,19 @@ def run_full_transaction(
             on_event, None, "merchant-agent", "approval_requested", offer, reason, evidence,
             path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
+        if approval_confirm is PAUSE_FOR_APPROVAL:
+            # The approval_requested entry above is already real and
+            # written -- this just stops short of resolving it. Nothing
+            # about WHY approval is needed gets recomputed by the caller;
+            # `reason`/`evidence` (already derived above from the exact
+            # same threshold/risk_level/gate_moderate checks) are handed
+            # back verbatim so the resume path never has to re-derive them.
+            return {
+                "state": "PENDING_APPROVAL", "offer": offer, "payment": None,
+                "negotiation_id": negotiation_id, "product_name": product_name,
+                "list_price": list_price, "merchant_id": merchant_id, "risk_level": risk_level,
+                "reason": reason, "evidence_paths": evidence, "total": total, "qty": qty,
+            }
         confirm = approval_confirm or _cli_confirm
         approved = confirm(
             f"Approve payment of {total:.2f} {policy['currency']} for {qty}x {policy['product_name']}?"

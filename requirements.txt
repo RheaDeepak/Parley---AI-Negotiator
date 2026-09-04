@@ -3,3 +3,5 @@ razorpay
 anthropic
 pydantic
 google-genai
+fastapi
+uvicorn

@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Parley Negotiation</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card-bg: #ffffff;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-bg: #eff6ff;
+    --green-bg: #dcfce7; --green-text: #166534;
+    --red-bg: #fee2e2; --red-text: #991b1b;
+    --amber-bg: #fef3c7; --amber-text: #92400e;
+    --gray-bg: #e5e7eb; --gray-text: #374151;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    max-width: 760px; margin-left: auto; margin-right: auto;
+  }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
+  h1 { margin: 0; font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
+  a.dashboard-link {
+    color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
+  }
+  a.dashboard-link:hover { border-color: var(--accent); }
+
+  .card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 14px 0; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 5px; }
+  .field select, .field input {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px;
+    font-size: 14px; background: var(--card-bg); color: var(--text);
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .hint {
+    font-size: 13px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--accent-bg); color: var(--text); min-height: 18px;
+  }
+  .radio-group { display: flex; flex-direction: column; gap: 6px; }
+  .radio-group label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; text-transform: none; color: var(--text); }
+  .radio-group input { width: auto; }
+  button {
+    font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 8px;
+    border: none; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: #fff; }
+  button.approve { background: var(--green-text); color: #fff; margin-right: 10px; }
+  button.decline { background: var(--red-text); color: #fff; }
+
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge-none { background: var(--gray-bg); color: var(--gray-text); }
+  .badge-moderate { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-high { background: var(--red-bg); color: var(--red-text); }
+  .badge-completed, .badge-accepted { background: var(--green-bg); color: var(--green-text); }
+  .badge-rejected, .badge-approval_declined { background: var(--red-bg); color: var(--red-text); }
+  .badge-rollback { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-other { background: var(--gray-bg); color: var(--gray-text); }
+
+  #risk-card { border: 2px solid var(--amber-text); background: var(--amber-bg); display: none; }
+  #risk-card.risk-none { border-color: var(--gray-text); background: var(--gray-bg); }
+  #risk-card.risk-high { border-color: var(--red-text); background: var(--red-bg); }
+  #risk-card h2 { display: flex; align-items: center; gap: 10px; }
+  #risk-card ul { margin: 8px 0 0 0; padding-left: 20px; font-size: 13px; }
+  #risk-card .consequences { margin-top: 10px; font-size: 13px; display: flex; gap: 18px; flex-wrap: wrap; }
+  #risk-card .consequences b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+
+  #rounds-container { display: none; }
+  .round-entry {
+    display: flex; margin-bottom: 10px; opacity: 0; animation: fadein 0.3s ease forwards;
+  }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .round-entry.buyer { justify-content: flex-start; }
+  .round-entry.merchant { justify-content: flex-end; }
+  .bubble {
+    max-width: 78%; padding: 10px 14px; border-radius: 12px; font-size: 13px; border: 1px solid var(--border);
+  }
+  .round-entry.buyer .bubble { background: var(--accent-bg); border-bottom-left-radius: 3px; }
+  .round-entry.merchant .bubble { background: var(--card-bg); border-bottom-right-radius: 3px; }
+  .bubble .who { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .bubble .price { font-size: 15px; font-weight: 700; }
+  .bubble .rationale { margin-top: 4px; color: var(--muted); font-size: 12px; }
+
+  #approval-card { display: none; }
+  #approval-card .summary { font-size: 14px; margin-bottom: 6px; }
+  #approval-card .reason { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+
+  #outcome-card { display: none; }
+  #outcome-card .price-line { font-size: 20px; font-weight: 700; margin: 10px 0 4px 0; }
+  #outcome-card .detail-line { font-size: 13px; color: var(--muted); }
+  #outcome-card .detail-line code { font-family: ui-monospace, Consolas, monospace; }
+
+  .error-banner {
+    background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 10px 14px;
+    font-size: 13px; margin-bottom: 14px; display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --card-bg: #1e2128; --text: #e6e8eb; --muted: #9aa1ac; --border: #2b2f38;
+      --accent: #3b82f6; --accent-bg: #16233d;
+      --green-bg: #113321; --green-text: #4ade80;
+      --red-bg: #3a1414; --red-text: #f87171;
+      --amber-bg: #3a2c0f; --amber-text: #fbbf24;
+      --gray-bg: #2b2f38; --gray-text: #b8bec9;
+    }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Parley Negotiation</h1>
+      <p class="subtitle">Pick a merchant, product, and buyer, then negotiate against the real Parley engine.</p>
+    </div>
+    <a class="dashboard-link" href="../dashboard.html" target="_blank">View Dashboard &rarr;</a>
+  </header>
+
+  <div class="error-banner" id="error-banner"></div>
+
+  <div class="card" id="setup-card">
+    <h2>Set up the negotiation</h2>
+    <div class="row">
+      <div class="field">
+        <label for="merchant-select">Merchant</label>
+        <select id="merchant-select"><option value="">Loading merchants…</option></select>
+      </div>
+      <div class="field">
+        <label for="product-select">Product</label>
+        <select id="product-select" disabled><option value="">Select a merchant first</option></select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="buyer-select">Buyer</label>
+      <select id="buyer-select"><option value="">Loading buyers…</option></select>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="start-price">Starting offer</label>
+        <input type="number" id="start-price" min="0" step="0.01" placeholder="e.g. 1600">
+      </div>
+      <div class="field">
+        <label for="max-price">Maximum budget</label>
+        <input type="number" id="max-price" min="0" step="0.01" placeholder="e.g. 1900">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="qty-input">Quantity</label>
+        <input type="number" id="qty-input" min="1" max="20" step="1" value="1">
+      </div>
+      <div class="field">
+        <label>Effective floor (live)</label>
+        <div class="hint" id="floor-hint">Pick a product and buyer to see this.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>If no agreement after 5 rounds</label>
+      <div class="radio-group">
+        <label><input type="radio" name="round-limit" value="walk_away" checked> Do not proceed with the transaction</label>
+        <label><input type="radio" name="round-limit" value="accept_final"> Buy at the merchant's final offered price</label>
+      </div>
+    </div>
+    <button class="primary" id="start-btn">Start Negotiation</button>
+  </div>
+
+  <div class="card" id="risk-card">
+    <h2>
+      <span>Risk Agent</span>
+      <span class="badge" id="risk-tier-badge"></span>
+    </h2>
+    <ul id="risk-factors"></ul>
+    <div class="consequences">
+      <div><b>Discount ceiling</b><span id="risk-discount"></span></div>
+      <div><b>Approval required</b><span id="risk-approval"></span></div>
+    </div>
+  </div>
+
+  <div class="card" id="rounds-container"></div>
+
+  <div class="card" id="approval-card">
+    <h2>Human approval required</h2>
+    <div class="summary" id="approval-summary"></div>
+    <div class="reason" id="approval-reason"></div>
+    <button class="approve" id="approve-btn">Approve</button>
+    <button class="decline" id="decline-btn">Decline</button>
+  </div>
+
+  <div class="card" id="outcome-card">
+    <h2>Outcome <span class="badge" id="outcome-badge"></span></h2>
+    <div class="price-line" id="outcome-price"></div>
+    <div class="detail-line" id="outcome-detail"></div>
+  </div>
+
+<script>
+const API_BASE = "http://localhost:8000";
+
+const el = (id) => document.getElementById(id);
+const merchantSelect = el("merchant-select");
+const productSelect = el("product-select");
+const buyerSelect = el("buyer-select");
+const startPriceInput = el("start-price");
+const maxPriceInput = el("max-price");
+const qtyInput = el("qty-input");
+const floorHint = el("floor-hint");
+const startBtn = el("start-btn");
+const errorBanner = el("error-banner");
+
+const riskCard = el("risk-card");
+const roundsContainer = el("rounds-container");
+const approvalCard = el("approval-card");
+const outcomeCard = el("outcome-card");
+
+let catalogCache = [];
+
+function showError(message) {
+  errorBanner.textContent = message;
+  errorBanner.style.display = "block";
+}
+function clearError() {
+  errorBanner.style.display = "none";
+  errorBanner.textContent = "";
+}
+
+async function api(path, options) {
+  const resp = await fetch(API_BASE + path, options);
+  if (!resp.ok) {
+    let detail = resp.statusText;
+    try { detail = (await resp.json()).detail || detail; } catch (e) {}
+    throw new Error(`${resp.status}: ${detail}`);
+  }
+  return resp.json();
+}
+
+async function loadMerchants() {
+  try {
+    const merchants = await api("/api/merchants");
+    merchantSelect.innerHTML = '<option value="">Select a merchant…</option>' +
+      merchants.map(m => `<option value="${m.merchant_id}">${m.merchant_name}</option>`).join("");
+  } catch (e) {
+    showError("Could not load merchants: " + e.message + " -- is the API running (uvicorn src.api:app)?");
+  }
+}
+
+async function loadBuyers() {
+  try {
+    const buyers = await api("/api/buyers");
+    buyerSelect.innerHTML = '<option value="">Select a buyer…</option>' +
+      buyers.map(b => `<option value="${b.buyer_id}">${b.buyer_id} -- ${b.persona}</option>`).join("");
+  } catch (e) {
+    showError("Could not load buyers: " + e.message);
+  }
+}
+
+async function loadProducts() {
+  const merchantId = merchantSelect.value;
+  productSelect.disabled = true;
+  if (!merchantId) {
+    productSelect.innerHTML = '<option value="">Select a merchant first</option>';
+    return;
+  }
+  productSelect.innerHTML = '<option value="">Loading products…</option>';
+  try {
+    const products = await api(`/api/catalog?merchant_id=${encodeURIComponent(merchantId)}`);
+    // Deliberately no MRP/list_price in this label -- showing it here
+    // would anchor the buyer's starting-offer input before they've typed
+    // anything. list_price is only revealed after the fact, in the
+    // outcome card's "% off list price" line.
+    catalogCache = products;
+    productSelect.innerHTML = '<option value="">Select a product…</option>' +
+      products.map(p => `<option value="${p.sku_id}">${p.product_name}</option>`).join("");
+    productSelect.disabled = false;
+  } catch (e) {
+    showError("Could not load catalog: " + e.message);
+  }
+  updateFloorHint();
+}
+
+let floorHintToken = 0;
+
+async function updateFloorHint() {
+  const productId = productSelect.value;
+  const buyerId = buyerSelect.value;
+  const qty = parseInt(qtyInput.value, 10);
+  if (!productId || !buyerId || isNaN(qty) || qty < 1) {
+    floorHint.textContent = "Pick a product and buyer to see this.";
+    return;
+  }
+  const token = ++floorHintToken; // guards against an earlier, slower request landing after a newer one
+  floorHint.textContent = "Calculating…";
+  try {
+    const data = await api(
+      `/api/floor-preview?product_id=${encodeURIComponent(productId)}&buyer_id=${encodeURIComponent(buyerId)}&qty=${qty}`
+    );
+    if (token !== floorHintToken) return;
+    floorHint.textContent = `${data.effective_floor} ${data.currency} (driven by ${data.evidence_path}${data.risk_level !== "none" ? `, risk=${data.risk_level}` : ""})`;
+  } catch (e) {
+    if (token !== floorHintToken) return;
+    floorHint.textContent = "Could not compute: " + e.message;
+  }
+}
+
+function resetResultPanels() {
+  riskCard.style.display = "none";
+  riskCard.className = "";
+  roundsContainer.style.display = "none";
+  roundsContainer.innerHTML = "";
+  approvalCard.style.display = "none";
+  outcomeCard.style.display = "none";
+}
+
+function renderRiskCard(risk) {
+  riskCard.className = "risk-" + risk.level;
+  el("risk-tier-badge").textContent = risk.level.toUpperCase();
+  el("risk-tier-badge").className = "badge badge-" + risk.level;
+  el("risk-factors").innerHTML = risk.factors.map(f => `<li>${f}</li>`).join("") || "<li>No specific factors</li>";
+  let discountLabel;
+  if (risk.discount_factor === null || risk.discount_factor === undefined) discountLabel = "Unrestricted";
+  else if (risk.discount_factor === 0) discountLabel = "0% -- full list price only";
+  else discountLabel = Math.round(risk.discount_factor * 100) + "% of normal";
+  el("risk-discount").textContent = discountLabel;
+  el("risk-approval").textContent = risk.approval_required ? "Yes" : "No";
+  riskCard.style.display = "block";
+}
+
+function renderRoundEntry(entry) {
+  const isBuyer = entry.agent === "buyer-agent";
+  const wrap = document.createElement("div");
+  wrap.className = "round-entry " + (isBuyer ? "buyer" : "merchant");
+  const price = entry.offer ? entry.offer.price : null;
+  wrap.innerHTML = `
+    <div class="bubble">
+      <div class="who">Round ${entry.round_num} -- ${isBuyer ? "Buyer" : "Merchant"} -- ${entry.action}</div>
+      ${price !== null ? `<div class="price">${price}</div>` : ""}
+      ${entry.rationale ? `<div class="rationale">${entry.rationale}</div>` : ""}
+    </div>`;
+  roundsContainer.appendChild(wrap);
+}
+
+function outcomeBadgeClass(state) {
+  if (state === "COMPLETED") return "badge-completed";
+  if (state === "REJECTED") return "badge-rejected";
+  if (state === "ROLLBACK") return "badge-rollback";
+  if (state === "APPROVAL_DECLINED") return "badge-approval_declined";
+  return "badge-other";
+}
+
+function negotiatedPriceLine(offer, listPrice) {
+  if (!offer) return "No agreement reached";
+  if (listPrice) {
+    const pct = ((listPrice - offer.price) / listPrice * 100).toFixed(1);
+    return `Negotiated price: ${offer.price} x${offer.qty} (${pct}% off list price ${listPrice})`;
+  }
+  return `${offer.price} x${offer.qty}`;
+}
+
+function renderOutcome(data) {
+  const badge = el("outcome-badge");
+  badge.textContent = data.state;
+  badge.className = "badge " + outcomeBadgeClass(data.state);
+
+  const priceEl = el("outcome-price");
+  const detailEl = el("outcome-detail");
+
+  if (data.state === "COMPLETED") {
+    priceEl.textContent = negotiatedPriceLine(data.offer, data.list_price) + " -- paid";
+    detailEl.innerHTML = `Order <code>${data.payment.order_id}</code> completed for ${data.product_name || "this product"}.`;
+  } else if (data.state === "REJECTED") {
+    priceEl.textContent = "No agreement reached";
+    detailEl.textContent = "The buyer and merchant could not agree on a price -- see the rationale in the transcript above.";
+  } else if (data.state === "ROLLBACK") {
+    priceEl.textContent = negotiatedPriceLine(data.offer, data.list_price) + " -- rolled back";
+    detailEl.textContent = "Reason: " + (data.reason || "unknown") +
+      (data.payment && data.payment.error_description ? ` (${data.payment.error_description})` : "");
+  } else if (data.state === "APPROVAL_DECLINED") {
+    priceEl.textContent = negotiatedPriceLine(data.offer, data.list_price) + " -- not paid";
+    detailEl.textContent = "The human approver declined this transaction; payment_service was never called.";
+  } else {
+    priceEl.textContent = data.state;
+    detailEl.textContent = "";
+  }
+  outcomeCard.style.display = "block";
+}
+
+function revealSequence(data, onDone) {
+  const queue = [];
+  if (data.risk_review) queue.push({ type: "risk", payload: data.risk_review });
+  for (const r of data.rounds) queue.push({ type: "round", payload: r });
+
+  if (queue.some(q => q.type === "round")) roundsContainer.style.display = "block";
+
+  let i = 0;
+  function step() {
+    if (i >= queue.length) { onDone(); return; }
+    const item = queue[i++];
+    if (item.type === "risk") renderRiskCard(item.payload);
+    else renderRoundEntry(item.payload);
+    setTimeout(step, 500);
+  }
+  step();
+}
+
+async function startNegotiation() {
+  clearError();
+  resetResultPanels();
+  const productId = productSelect.value;
+  const buyerId = buyerSelect.value;
+  const startPrice = parseFloat(startPriceInput.value);
+  const maxPrice = parseFloat(maxPriceInput.value);
+  const qty = parseInt(qtyInput.value, 10);
+  const onRoundLimit = document.querySelector('input[name="round-limit"]:checked').value;
+
+  if (!productId || !buyerId || isNaN(startPrice) || isNaN(maxPrice) || isNaN(qty) || qty < 1) {
+    showError("Pick a merchant, product, buyer, a valid quantity, and fill in both prices before starting.");
+    return;
+  }
+
+  startBtn.disabled = true;
+  startBtn.textContent = "Negotiating…";
+  try {
+    const data = await api("/api/negotiate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: productId, buyer_id: buyerId, start_price: startPrice, max_price: maxPrice,
+        qty: qty, on_round_limit: onRoundLimit,
+      }),
+    });
+    revealSequence(data, () => onNegotiationRevealed(data));
+  } catch (e) {
+    showError("Negotiation failed: " + e.message);
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Negotiation";
+  }
+}
+
+function onNegotiationRevealed(data) {
+  if (data.status === "pending_approval") {
+    el("approval-summary").textContent =
+      `Agreed at ${data.agreed_price} x${data.agreed_qty} -- awaiting human approval before payment.`;
+    el("approval-reason").textContent = data.reason || "";
+    approvalCard.style.display = "block";
+    approveBtn.dataset.negotiationId = data.negotiation_id;
+    approveBtn.disabled = false;
+    declineBtn.disabled = false;
+  } else {
+    renderOutcome(data);
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Negotiation";
+  }
+}
+
+const approveBtn = el("approve-btn");
+const declineBtn = el("decline-btn");
+
+async function resolveApproval(approved) {
+  approveBtn.disabled = true;
+  declineBtn.disabled = true;
+  const negotiationId = approveBtn.dataset.negotiationId;
+  try {
+    const data = await api("/api/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ negotiation_id: negotiationId, approved }),
+    });
+    approvalCard.style.display = "none";
+    renderOutcome(data);
+  } catch (e) {
+    showError("Approval failed: " + e.message);
+  } finally {
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Negotiation";
+  }
+}
+
+merchantSelect.addEventListener("change", loadProducts);
+productSelect.addEventListener("change", updateFloorHint);
+buyerSelect.addEventListener("change", updateFloorHint);
+qtyInput.addEventListener("input", updateFloorHint);
+startBtn.addEventListener("click", startNegotiation);
+approveBtn.addEventListener("click", () => resolveApproval(true));
+declineBtn.addEventListener("click", () => resolveApproval(false));
+
+loadMerchants();
+loadBuyers();
+</script>
+</body>
+</html>
