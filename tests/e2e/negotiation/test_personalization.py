@@ -44,9 +44,14 @@ def test_ltv_computation_is_deterministic():
     (0, 0), (4999.99, 0),
     (5000, 2), (19999.99, 2),
     (20000, 5), (49999.99, 5),
-    (50000, 8), (10_000_000, 8),
+    (50000, 8), (99999.99, 8),
+    (100000, 12), (10_000_000, 12),
 ])
 def test_ltv_tier_lookup_is_deterministic_and_exact_at_boundaries(ltv, expected_bonus):
+    """Section 2Y (2026-09-05): the old open-ended top tier (50000, inf, 8)
+    was split at 100000 into (50000, 100000, 8) / (100000, inf, 12) so
+    Premium Customer (real LTV 66469.53, stays at 8%) and Bulk Buyer (real
+    LTV 103672.43, now 12%) are no longer behaviorally identical."""
     assert personalization.ltv_discount_bonus(ltv) == expected_bonus
     assert personalization.ltv_discount_bonus(ltv) == personalization.ltv_discount_bonus(ltv)  # repeatable
 
@@ -56,8 +61,8 @@ def test_ltv_bonus_never_pushes_effective_discount_past_hard_ceiling():
         "max_discount_pct": 28,
         "qty_breaks": [{"min_qty": 10, "discount_pct": 29}],
     }
-    # The real top tier (+8%).
-    effective = personalization.apply_ltv_bonus(policy, ltv_bonus_pct=8)
+    # The real top tier (+12%, since Section 2Y's split -- was +8% before).
+    effective = personalization.apply_ltv_bonus(policy, ltv_bonus_pct=12)
     assert effective["max_discount_pct"] == personalization.HARD_DISCOUNT_CEILING_PCT
     assert effective["qty_breaks"][0]["discount_pct"] == personalization.HARD_DISCOUNT_CEILING_PCT
 
@@ -80,11 +85,6 @@ def test_apply_ltv_bonus_does_not_mutate_the_input_policy():
 # ---------------------------------------------------------------------------
 # Margin-aware cost floor + inventory liquidation (Milestone 3c follow-up)
 # ---------------------------------------------------------------------------
-
-
-def test_cost_floor_price_is_cost_plus_two_percent_margin():
-    product = {"cost": 1000.0}
-    assert personalization.cost_floor_price(product) == 1020.0
 
 
 @pytest.mark.parametrize("days,expected_fraction", [
@@ -172,31 +172,136 @@ def test_books_needs_even_longer_days_than_electronics_to_trigger_liquidation():
     assert personalization.liquidation_relaxation_fraction(books_aged) > 0.0
 
 
-def test_cost_floor_overrides_liquidation_regardless_of_category():
-    """Deliverable #5's third check, updated for the 2026-09-02
-    structural fix: the ramp now targets min_price, not cost_floor_price()
-    directly -- but product_to_policy() still clamps min_price itself up
-    to cost_floor_price() when the raw catalog value is unsafely low
-    (Section 2E), so a full ramp transitively still lands exactly at
-    cost_floor_price(), never below it, regardless of category."""
+def test_min_price_passes_through_unclamped_regardless_of_category():
+    """Milestone 9 (Section 4E) follow-up: product_to_policy() no longer
+    re-derives or re-clamps min_price against a second cost-margin
+    formula -- it trusts product["min_price"] exactly as given (the
+    generator already computed it as cost * 1.15). A full liquidation
+    ramp still converges on min_price, whatever its raw value, regardless
+    of category."""
     from src.agents.merchant_agent import _floor_price
 
     for category in ("Electronics", "Books & Media", "Home & Kitchen"):
         product = {
             "sku_id": f"SKU-{category[:4].upper()}-COSTFLOOR", "product_name": "Widget", "currency": "INR",
-            "list_price": 1000.0, "cost": 500.0, "min_price": 400.0,  # 400 < cost*1.02 = 510 -- unsafe raw value
+            "list_price": 1000.0, "cost": 500.0, "min_price": 400.0,
             "max_discount_pct": 20, "qty_breaks": [], "current_inventory": 50, "inventory_floor": 1,
             "category": category, "days_in_inventory": 5000,  # extreme -- past every category's full ramp
         }
-        cost_floor = personalization.cost_floor_price(product)
-        assert cost_floor == 510.0
-
         policy = personalization.product_to_policy(product, 5, 20000)
-        assert policy["min_price"] == cost_floor  # clamped up from the raw (unsafe) 400.0
+        assert policy["min_price"] == 400.0  # passed through exactly as given, no re-clamping
 
         floor, evidence_path = _floor_price(policy, qty=1)
-        assert floor == cost_floor  # fully ramped down to (the clamped) min_price -- never below it
+        assert floor == 400.0  # fully ramped down to min_price -- never below it
         assert evidence_path == "policy.min_price"
+
+
+# Real, live-reproduced product from the catalog -- SKU-ELEC-003, fully
+# liquidation-ramped (days_in_inventory=379 vs. Electronics' 180-day
+# threshold). At qty=12 the qty_breaks[0] tier (min_qty=10, 21%) applies.
+_SKU_ELEC_003 = {
+    "sku_id": "SKU-ELEC-003", "product_name": "27-inch 4K Monitor", "category": "Electronics",
+    "merchant_id": "MERCH-001", "currency": "INR", "list_price": 7976.05, "cost": 4429.16,
+    "min_price": 5093.53, "max_discount_pct": 11,
+    "qty_breaks": [{"min_qty": 10, "discount_pct": 21}, {"min_qty": 25, "discount_pct": 28}],
+    "current_inventory": 144, "inventory_floor": 2, "days_in_inventory": 379,
+    "shipping_cost": 130, "warranty_cost": 265.75,
+}
+
+
+def test_none_risk_liquidation_fully_applies_on_the_liquidation_eligible_product():
+    """Section 2V regression baseline: on SKU-ELEC-003 (fully liquidation-
+    ramped -- liquidation_relaxation_fraction == 1.0) with NO risk applied
+    at all (apply_risk_discount_cap() is never called for "none" -- see
+    run_negotiation()), liquidation relaxes computed all the way to
+    min_price, exactly as liquidation-only behavior always has. This is
+    the baseline the MODERATE test below is compared against: MODERATE's
+    result on this SAME fully-ramped product should equal this one, not
+    sit near list_price."""
+    from src.agents.merchant_agent import _floor_price
+
+    policy = personalization.product_to_policy(_SKU_ELEC_003, 5, 20000)
+    assert policy["liquidation_relaxation_fraction"] == 1.0  # confirms this product IS fully liquidation-eligible
+    assert "risk_level" not in policy  # "none" never calls apply_risk_discount_cap() at all
+
+    floor, evidence_path = _floor_price(policy, qty=12)
+    assert floor == 5093.53 == _SKU_ELEC_003["min_price"]
+    assert evidence_path == "policy.min_price"
+
+
+def test_moderate_risk_ceiling_stacks_with_liquidation_relaxation_on_the_same_product():
+    """Section 2V bug fix, live-reproduced: the ORIGINAL Section 2T fix
+    checked a bare `risk_discount_capped` boolean that personalization.
+    apply_risk_discount_cap() set True for BOTH "moderate" and "high" --
+    so MODERATE also got treated as a pre-liquidation floor candidate,
+    and since that candidate is always >= the liquidation-relaxed value,
+    max() picked it every time -- suppressing liquidation for MODERATE
+    exactly like the original bug did for HIGH (live-reproduced on this
+    same SKU: buyer_id=BUYER-001, MODERATE risk (new-buyer only),
+    computed an effective floor of ~7756.71 -- essentially list_price,
+    with no visible liquidation relaxation despite
+    days_in_inventory=379).
+
+    Fixed (Section 2V): only "high" gets the pre-liquidation-snapshot
+    candidate now (see _floor_price()'s risk_ceiling line). MODERATE's
+    `computed` is left to flow through liquidation's normal
+    interpolation exactly like an unrestricted policy would.
+
+    Section 2W follow-up (same day, separate bug): MODERATE also no
+    longer scales qty_breaks tiers at all (see
+    apply_risk_discount_cap() -- only HIGH does now), so at qty=12 this
+    product's qty_breaks[0] tier applies at its full, UNSCALED 21% --
+    identical to what NONE risk would compute -- rather than a
+    risk-scaled 5.25% ceiling. Asserted directly below via
+    risk_policy["qty_breaks"]. Combined with Section 2V, MODERATE's
+    `computed` starting point on THIS product is now identical to
+    NONE's, so both converge to the same fully-liquidation-ramped
+    min_price floor -- expected, not a sign MODERATE has no effect
+    (see the NONE-risk test above and Section 2W's own docstring for
+    why MODERATE still matters on non-qty_breaks-eligible quantities).
+    What matters here is liquidation is no longer suppressed -- MODERATE
+    lands meaningfully below list_price (7976.05), not near it."""
+    from src.agents.merchant_agent import _floor_price
+
+    policy = personalization.product_to_policy(_SKU_ELEC_003, 5, 20000)
+    risk = {"level": "moderate", "discount_factor": personalization.RISK_MODERATE_DISCOUNT_FACTOR}
+    risk_policy = personalization.apply_risk_discount_cap(policy, risk)
+    assert risk_policy["risk_level"] == "moderate"
+    assert risk_policy["qty_breaks"] == policy["qty_breaks"]  # Section 2W: MODERATE leaves qty_breaks untouched
+
+    floor, evidence_path = _floor_price(risk_policy, qty=12)
+    assert floor == 5093.53 == _SKU_ELEC_003["min_price"]  # liquidation stacks all the way
+    assert floor < 7976.05 * 0.95  # meaningfully below list_price -- the Section 2V regression this guards against
+    assert evidence_path == "policy.min_price"  # NOT "risk_agent.discount_ceiling" -- no override candidate anymore
+
+
+def test_high_risk_ceiling_overrides_liquidation_relaxation_on_the_same_product():
+    """Section 2T bug fix, live-reproduced: on SKU-ELEC-003 (fully
+    liquidation-ramped -- liquidation_relaxation_fraction == 1.0), a
+    HIGH-risk negotiation at qty=12 used to compute an effective floor of
+    5093.53 (min_price) instead of 7976.05 (list_price) -- liquidation's
+    relaxation had no awareness that `computed` had already been
+    tightened to "0% discount, full price only" by the Risk Agent, and
+    silently interpolated that risk-tightened value all the way back down
+    to min_price. A HIGH-risk buyer received a ~2882 INR discount the
+    Risk Agent's own card said was 0%. The two constraints must combine
+    via max() -- the stricter (higher) one wins -- exactly like every
+    other guardrail combination in this system. Unlike MODERATE (see the
+    test above, corrected in Section 2V), HIGH genuinely IS meant to
+    override/suppress liquidation entirely -- this is the one deliberate
+    carve-out, not a bug."""
+    from src.agents.merchant_agent import _floor_price
+
+    policy = personalization.product_to_policy(_SKU_ELEC_003, 5, 20000)
+    assert policy["liquidation_relaxation_fraction"] == 1.0  # confirms this product IS fully liquidation-eligible
+
+    risk = {"level": "high", "discount_factor": personalization.RISK_HIGH_DISCOUNT_FACTOR}
+    risk_policy = personalization.apply_risk_discount_cap(policy, risk)
+    assert risk_policy["risk_level"] == "high"
+
+    floor, evidence_path = _floor_price(risk_policy, qty=12)
+    assert floor == 7976.05 == _SKU_ELEC_003["list_price"]  # NOT 5093.53 (min_price) -- the pre-fix bug
+    assert evidence_path == "risk_agent.discount_ceiling"
 
 
 def test_liquidation_rationale_names_the_category_specific_threshold():
@@ -210,32 +315,27 @@ def test_liquidation_rationale_names_the_category_specific_threshold():
     assert "180-day threshold for Electronics" in rationale
 
 
-def test_extreme_ltv_bonus_on_low_margin_product_never_crosses_cost_floor():
-    """Deliverable #1's explicit test: an extremely high-LTV buyer
-    negotiating a low-margin product still cannot get a price below the
-    cost-derived floor -- it takes priority over min_price,
-    max_discount_pct, AND the LTV bonus combined."""
-    # A low-margin product where the raw catalog min_price was set BELOW
-    # what the cost floor requires (e.g. a generator/operator mistake) --
-    # product_to_policy() must still enforce the real floor regardless.
+def test_extreme_ltv_bonus_never_touches_min_price():
+    """An extremely high-LTV buyer negotiating a product still cannot get
+    a price below min_price -- the LTV bonus only ever touches
+    max_discount_pct/qty_breaks, never min_price itself (unchanged by
+    Milestone 9's removal of the separate cost-margin re-clamp)."""
     product = {
         "sku_id": "SKU-LOWMARGIN-001", "product_name": "Thin-Margin Widget", "currency": "INR",
-        "list_price": 1100.0, "cost": 1000.0, "min_price": 800.0,  # 800 < cost*1.02 = 1020
+        "list_price": 1100.0, "cost": 1000.0, "min_price": 800.0,
         "max_discount_pct": 40, "qty_breaks": [], "current_inventory": 100, "inventory_floor": 1,
         "days_in_inventory": 5,
     }
-    cost_floor = personalization.cost_floor_price(product)
-    assert cost_floor == 1020.0
-
     policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
-    assert policy["min_price"] == cost_floor  # clamped up from the raw (unsafe) 800.0
+    assert policy["min_price"] == 800.0  # passed through exactly as given
 
     # The maximum possible LTV bonus (top tier, an extremely high LTV) --
     # still only touches max_discount_pct/qty_breaks, never min_price.
+    # Section 2Y (2026-09-05): top tier is now 12%, not 8%.
     max_bonus = personalization.ltv_discount_bonus(10_000_000)
-    assert max_bonus == 8
+    assert max_bonus == 12
     effective_policy = personalization.apply_ltv_bonus(policy, ltv_bonus_pct=max_bonus)
-    assert effective_policy["min_price"] == cost_floor  # untouched by the bonus
+    assert effective_policy["min_price"] == 800.0  # untouched by the bonus
 
     from src.agents.merchant_agent import evaluate
 
@@ -428,6 +528,66 @@ def test_high_risk_forces_list_price_only_and_still_requires_human_approval(tmp_
     assert "high" in approval_entry["rationale"].lower()
     assert approval_entry["evidence_paths"] == ["risk_agent.risk_level"]
     assert any(e["action"] == "offer" for e in entries)  # negotiation DID proceed normally -- offers were made
+
+
+def test_moderate_risk_from_large_request_alone_does_not_worsen_the_floor_at_higher_qty():
+    """Section 2W bug fix, live-reproduced: MODERATE risk firing from
+    "large_request" ALONE (an ordinary REPEAT buyer placing a bulk
+    order -- not a new-buyer circumvention attempt) used to scale
+    qty_breaks tiers down by RISK_MODERATE_DISCOUNT_FACTOR (0.25), same
+    as HIGH. Since a qty_breaks tier is usually a much bigger discount
+    than max_discount_pct (that's the point of a bulk tier), scaling it
+    down by 75% frequently produced a WORSE (higher) floor than the
+    plain, unscaled max_discount_pct that applied to a smaller qty one
+    unit below the same tier's threshold -- so ordering MORE made the
+    price go UP, the opposite of what a bulk discount is for.
+    Live-reproduced: SKU-ELEC-001, repeat buyer (4 prior orders, so risk
+    is "none" below the threshold): qty=9 -> floor 8694.28 (12% off,
+    unscaled); qty=10 -> floor 9435.27 under the pre-fix code (large_
+    request alone -> moderate; the 18% tier scaled to 4.5%) -- a ~740
+    INR INCREASE for ordering one more unit.
+
+    Fixed: apply_risk_discount_cap() no longer scales qty_breaks tiers
+    for MODERATE at all (only HIGH still does -- see its own docstring).
+    A qty_breaks tier, once it applies, is now never worse than what an
+    unrestricted ("none") policy would have given at that same qty --
+    the floor is monotonically non-increasing as qty crosses into and
+    through bulk territory under MODERATE risk."""
+    from src.agents.merchant_agent import _floor_price
+
+    product = _demo_product("SKU-RISK-005", current_inventory=50)
+    product["max_discount_pct"] = 12
+    product["qty_breaks"] = [{"min_qty": 10, "discount_pct": 18}, {"min_qty": 25, "discount_pct": 25}]
+    policy = personalization.product_to_policy(product, max_negotiation_rounds=5, transaction_approval_threshold=20000)
+    # 2 prior orders -- at/above RISK_NEW_BUYER_MAX_PRIOR_ORDERS (2), so
+    # "new_buyer" does NOT fire; this isolates "large_request" as the
+    # ONLY factor in play, exactly the ordinary-repeat-bulk-buyer case
+    # this fix targets.
+    orders = [
+        {"buyer_id": "BUYER-REPEAT-1", "order_id": "ORD-1", "amount": 500.0},
+        {"buyer_id": "BUYER-REPEAT-1", "order_id": "ORD-2", "amount": 500.0},
+    ]
+
+    # qty=9: below the qty_breaks threshold -- large_request doesn't fire,
+    # and this buyer has prior orders so new_buyer doesn't either -- risk
+    # is genuinely "none", floor uses the plain unscaled max_discount_pct.
+    risk_below = personalization.risk_assessment("BUYER-REPEAT-1", qty=9, qty_breaks=policy["qty_breaks"], orders=orders)
+    assert risk_below["level"] == "none"
+    floor_below, _ = _floor_price(policy, qty=9)
+    assert floor_below == 880.0  # 1000 * (1 - 12%)
+
+    # qty=10: crosses into the qty_breaks[0] tier -- large_request now
+    # fires alone (new_buyer does not, this buyer has prior orders), so
+    # risk is "moderate", NOT "none" or "high".
+    risk_at = personalization.risk_assessment("BUYER-REPEAT-1", qty=10, qty_breaks=policy["qty_breaks"], orders=orders)
+    assert risk_at["level"] == "moderate"
+    tightened_policy = personalization.apply_risk_discount_cap(policy, risk_at)
+    assert tightened_policy["qty_breaks"][0]["discount_pct"] == 18  # NOT scaled to 4.5 -- the Section 2W fix
+    floor_at, evidence_path = _floor_price(tightened_policy, qty=10)
+    assert floor_at == pytest.approx(820.0)  # 1000*(1-18%), the FULL bulk tier -- NOT 955.0 (pre-fix, scaled-to-4.5%)
+    assert evidence_path == "policy.qty_breaks[0].discount_pct"
+
+    assert floor_at <= floor_below  # the actual regression guard: MORE qty must never mean a WORSE floor
 
 
 # ---------------------------------------------------------------------------

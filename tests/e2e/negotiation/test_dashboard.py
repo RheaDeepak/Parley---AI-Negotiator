@@ -1,4 +1,4 @@
-from scripts.generate_dashboard import (
+from src.dashboard import (
     classify_outcome,
     compute_merchant_breakdown,
     compute_summary_stats,

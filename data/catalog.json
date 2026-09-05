@@ -20,8 +20,10 @@
       }
     ],
     "current_inventory": 31,
-    "inventory_floor": 3,
-    "days_in_inventory": 18
+    "inventory_floor": 1,
+    "days_in_inventory": 18,
+    "shipping_cost": 130,
+    "warranty_cost": 329.0
   },
   {
     "sku_id": "SKU-ELEC-002",
@@ -45,7 +47,9 @@
     ],
     "current_inventory": 60,
     "inventory_floor": 1,
-    "days_in_inventory": 12
+    "days_in_inventory": 12,
+    "shipping_cost": 130,
+    "warranty_cost": 447.54
   },
   {
     "sku_id": "SKU-ELEC-003",
@@ -68,8 +72,10 @@
       }
     ],
     "current_inventory": 144,
-    "inventory_floor": 2,
-    "days_in_inventory": 379
+    "inventory_floor": 1,
+    "days_in_inventory": 379,
+    "shipping_cost": 130,
+    "warranty_cost": 265.75
   },
   {
     "sku_id": "SKU-ELEC-004",
@@ -91,9 +97,11 @@
         "discount_pct": 25
       }
     ],
-    "current_inventory": 92,
-    "inventory_floor": 1,
-    "days_in_inventory": 55
+    "current_inventory": 89,
+    "inventory_floor": 2,
+    "days_in_inventory": 55,
+    "shipping_cost": 130,
+    "warranty_cost": 157.49
   },
   {
     "sku_id": "SKU-ELEC-005",
@@ -117,7 +125,9 @@
     ],
     "current_inventory": 29,
     "inventory_floor": 1,
-    "days_in_inventory": 49
+    "days_in_inventory": 49,
+    "shipping_cost": 130,
+    "warranty_cost": 133.81
   },
   {
     "sku_id": "SKU-ELEC-006",
@@ -141,7 +151,9 @@
     ],
     "current_inventory": 36,
     "inventory_floor": 2,
-    "days_in_inventory": 69
+    "days_in_inventory": 69,
+    "shipping_cost": 130,
+    "warranty_cost": 516.52
   },
   {
     "sku_id": "SKU-ELEC-007",
@@ -163,9 +175,11 @@
         "discount_pct": 26
       }
     ],
-    "current_inventory": 13,
-    "inventory_floor": 3,
-    "days_in_inventory": 9
+    "current_inventory": 16,
+    "inventory_floor": 1,
+    "days_in_inventory": 9,
+    "shipping_cost": 130,
+    "warranty_cost": 70.08
   },
   {
     "sku_id": "SKU-ELEC-008",
@@ -189,7 +203,9 @@
     ],
     "current_inventory": 102,
     "inventory_floor": 1,
-    "days_in_inventory": 13
+    "days_in_inventory": 13,
+    "shipping_cost": 130,
+    "warranty_cost": 147.21
   },
   {
     "sku_id": "SKU-ELEC-009",
@@ -212,8 +228,10 @@
       }
     ],
     "current_inventory": 73,
-    "inventory_floor": 3,
-    "days_in_inventory": 27
+    "inventory_floor": 1,
+    "days_in_inventory": 27,
+    "shipping_cost": 130,
+    "warranty_cost": 311.32
   },
   {
     "sku_id": "SKU-ELEC-010",
@@ -237,7 +255,9 @@
     ],
     "current_inventory": 46,
     "inventory_floor": 2,
-    "days_in_inventory": 32
+    "days_in_inventory": 32,
+    "shipping_cost": 130,
+    "warranty_cost": 574.97
   },
   {
     "sku_id": "SKU-APRL-001",
@@ -261,7 +281,9 @@
     ],
     "current_inventory": 63,
     "inventory_floor": 1,
-    "days_in_inventory": 8
+    "days_in_inventory": 8,
+    "shipping_cost": 60,
+    "warranty_cost": 76.47
   },
   {
     "sku_id": "SKU-APRL-002",
@@ -284,8 +306,10 @@
       }
     ],
     "current_inventory": 59,
-    "inventory_floor": 3,
-    "days_in_inventory": 41
+    "inventory_floor": 1,
+    "days_in_inventory": 41,
+    "shipping_cost": 60,
+    "warranty_cost": 123.98
   },
   {
     "sku_id": "SKU-APRL-003",
@@ -308,8 +332,10 @@
       }
     ],
     "current_inventory": 68,
-    "inventory_floor": 3,
-    "days_in_inventory": 285
+    "inventory_floor": 1,
+    "days_in_inventory": 285,
+    "shipping_cost": 60,
+    "warranty_cost": 93.65
   },
   {
     "sku_id": "SKU-APRL-004",
@@ -333,7 +359,9 @@
     ],
     "current_inventory": 61,
     "inventory_floor": 1,
-    "days_in_inventory": 47
+    "days_in_inventory": 47,
+    "shipping_cost": 60,
+    "warranty_cost": 85.94
   },
   {
     "sku_id": "SKU-APRL-005",
@@ -356,8 +384,10 @@
       }
     ],
     "current_inventory": 45,
-    "inventory_floor": 3,
-    "days_in_inventory": 81
+    "inventory_floor": 1,
+    "days_in_inventory": 81,
+    "shipping_cost": 60,
+    "warranty_cost": 74.5
   },
   {
     "sku_id": "SKU-APRL-006",
@@ -380,8 +410,10 @@
       }
     ],
     "current_inventory": 69,
-    "inventory_floor": 2,
-    "days_in_inventory": 68
+    "inventory_floor": 1,
+    "days_in_inventory": 68,
+    "shipping_cost": 60,
+    "warranty_cost": 62.86
   },
   {
     "sku_id": "SKU-APRL-007",
@@ -405,7 +437,9 @@
     ],
     "current_inventory": 92,
     "inventory_floor": 1,
-    "days_in_inventory": 35
+    "days_in_inventory": 35,
+    "shipping_cost": 60,
+    "warranty_cost": 115.48
   },
   {
     "sku_id": "SKU-APRL-008",
@@ -428,8 +462,10 @@
       }
     ],
     "current_inventory": 133,
-    "inventory_floor": 1,
-    "days_in_inventory": 34
+    "inventory_floor": 2,
+    "days_in_inventory": 34,
+    "shipping_cost": 60,
+    "warranty_cost": 48.37
   },
   {
     "sku_id": "SKU-APRL-009",
@@ -453,7 +489,9 @@
     ],
     "current_inventory": 55,
     "inventory_floor": 1,
-    "days_in_inventory": 78
+    "days_in_inventory": 78,
+    "shipping_cost": 60,
+    "warranty_cost": 74.67
   },
   {
     "sku_id": "SKU-APRL-010",
@@ -477,7 +515,9 @@
     ],
     "current_inventory": 9,
     "inventory_floor": 1,
-    "days_in_inventory": 63
+    "days_in_inventory": 63,
+    "shipping_cost": 60,
+    "warranty_cost": 58.82
   },
   {
     "sku_id": "SKU-HOME-001",
@@ -501,7 +541,9 @@
     ],
     "current_inventory": 150,
     "inventory_floor": 1,
-    "days_in_inventory": 31
+    "days_in_inventory": 31,
+    "shipping_cost": 90,
+    "warranty_cost": 243.36
   },
   {
     "sku_id": "SKU-HOME-002",
@@ -524,8 +566,10 @@
       }
     ],
     "current_inventory": 37,
-    "inventory_floor": 3,
-    "days_in_inventory": 17
+    "inventory_floor": 1,
+    "days_in_inventory": 17,
+    "shipping_cost": 90,
+    "warranty_cost": 27.06
   },
   {
     "sku_id": "SKU-HOME-003",
@@ -549,7 +593,9 @@
     ],
     "current_inventory": 113,
     "inventory_floor": 1,
-    "days_in_inventory": 495
+    "days_in_inventory": 495,
+    "shipping_cost": 90,
+    "warranty_cost": 117.08
   },
   {
     "sku_id": "SKU-HOME-004",
@@ -573,7 +619,9 @@
     ],
     "current_inventory": 100,
     "inventory_floor": 2,
-    "days_in_inventory": 52
+    "days_in_inventory": 52,
+    "shipping_cost": 90,
+    "warranty_cost": 235.04
   },
   {
     "sku_id": "SKU-HOME-005",
@@ -597,7 +645,9 @@
     ],
     "current_inventory": 10,
     "inventory_floor": 2,
-    "days_in_inventory": 44
+    "days_in_inventory": 44,
+    "shipping_cost": 90,
+    "warranty_cost": 208.14
   },
   {
     "sku_id": "SKU-HOME-006",
@@ -621,7 +671,9 @@
     ],
     "current_inventory": 20,
     "inventory_floor": 1,
-    "days_in_inventory": 81
+    "days_in_inventory": 81,
+    "shipping_cost": 90,
+    "warranty_cost": 136.72
   },
   {
     "sku_id": "SKU-HOME-007",
@@ -645,7 +697,9 @@
     ],
     "current_inventory": 76,
     "inventory_floor": 3,
-    "days_in_inventory": 31
+    "days_in_inventory": 31,
+    "shipping_cost": 90,
+    "warranty_cost": 19.72
   },
   {
     "sku_id": "SKU-HOME-008",
@@ -669,7 +723,9 @@
     ],
     "current_inventory": 109,
     "inventory_floor": 1,
-    "days_in_inventory": 61
+    "days_in_inventory": 61,
+    "shipping_cost": 90,
+    "warranty_cost": 119.02
   },
   {
     "sku_id": "SKU-HOME-009",
@@ -692,8 +748,10 @@
       }
     ],
     "current_inventory": 18,
-    "inventory_floor": 3,
-    "days_in_inventory": 60
+    "inventory_floor": 1,
+    "days_in_inventory": 60,
+    "shipping_cost": 90,
+    "warranty_cost": 30.56
   },
   {
     "sku_id": "SKU-HOME-010",
@@ -717,7 +775,9 @@
     ],
     "current_inventory": 32,
     "inventory_floor": 1,
-    "days_in_inventory": 44
+    "days_in_inventory": 44,
+    "shipping_cost": 90,
+    "warranty_cost": 162.61
   },
   {
     "sku_id": "SKU-SPRT-001",
@@ -741,7 +801,9 @@
     ],
     "current_inventory": 123,
     "inventory_floor": 1,
-    "days_in_inventory": 36
+    "days_in_inventory": 36,
+    "shipping_cost": 100,
+    "warranty_cost": 70.01
   },
   {
     "sku_id": "SKU-SPRT-002",
@@ -765,7 +827,9 @@
     ],
     "current_inventory": 8,
     "inventory_floor": 1,
-    "days_in_inventory": 70
+    "days_in_inventory": 70,
+    "shipping_cost": 100,
+    "warranty_cost": 238.47
   },
   {
     "sku_id": "SKU-SPRT-003",
@@ -788,8 +852,10 @@
       }
     ],
     "current_inventory": 59,
-    "inventory_floor": 2,
-    "days_in_inventory": 423
+    "inventory_floor": 1,
+    "days_in_inventory": 423,
+    "shipping_cost": 100,
+    "warranty_cost": 320.99
   },
   {
     "sku_id": "SKU-SPRT-004",
@@ -812,8 +878,10 @@
       }
     ],
     "current_inventory": 78,
-    "inventory_floor": 2,
-    "days_in_inventory": 59
+    "inventory_floor": 1,
+    "days_in_inventory": 59,
+    "shipping_cost": 100,
+    "warranty_cost": 253.53
   },
   {
     "sku_id": "SKU-SPRT-005",
@@ -837,7 +905,9 @@
     ],
     "current_inventory": 60,
     "inventory_floor": 1,
-    "days_in_inventory": 38
+    "days_in_inventory": 38,
+    "shipping_cost": 100,
+    "warranty_cost": 236.55
   },
   {
     "sku_id": "SKU-SPRT-006",
@@ -861,7 +931,9 @@
     ],
     "current_inventory": 127,
     "inventory_floor": 2,
-    "days_in_inventory": 75
+    "days_in_inventory": 75,
+    "shipping_cost": 100,
+    "warranty_cost": 188.04
   },
   {
     "sku_id": "SKU-SPRT-007",
@@ -885,7 +957,9 @@
     ],
     "current_inventory": 22,
     "inventory_floor": 2,
-    "days_in_inventory": 24
+    "days_in_inventory": 24,
+    "shipping_cost": 100,
+    "warranty_cost": 290.55
   },
   {
     "sku_id": "SKU-SPRT-008",
@@ -909,7 +983,9 @@
     ],
     "current_inventory": 15,
     "inventory_floor": 2,
-    "days_in_inventory": 32
+    "days_in_inventory": 32,
+    "shipping_cost": 100,
+    "warranty_cost": 35.68
   },
   {
     "sku_id": "SKU-SPRT-009",
@@ -933,7 +1009,9 @@
     ],
     "current_inventory": 85,
     "inventory_floor": 1,
-    "days_in_inventory": 86
+    "days_in_inventory": 86,
+    "shipping_cost": 100,
+    "warranty_cost": 38.08
   },
   {
     "sku_id": "SKU-SPRT-010",
@@ -957,7 +1035,9 @@
     ],
     "current_inventory": 7,
     "inventory_floor": 2,
-    "days_in_inventory": 10
+    "days_in_inventory": 10,
+    "shipping_cost": 100,
+    "warranty_cost": 81.08
   },
   {
     "sku_id": "SKU-BOOK-001",
@@ -981,7 +1061,9 @@
     ],
     "current_inventory": 134,
     "inventory_floor": 1,
-    "days_in_inventory": 28
+    "days_in_inventory": 28,
+    "shipping_cost": 35,
+    "warranty_cost": 39.3
   },
   {
     "sku_id": "SKU-BOOK-002",
@@ -1005,7 +1087,9 @@
     ],
     "current_inventory": 45,
     "inventory_floor": 2,
-    "days_in_inventory": 37
+    "days_in_inventory": 37,
+    "shipping_cost": 35,
+    "warranty_cost": 12.23
   },
   {
     "sku_id": "SKU-BOOK-003",
@@ -1028,8 +1112,10 @@
       }
     ],
     "current_inventory": 81,
-    "inventory_floor": 3,
-    "days_in_inventory": 541
+    "inventory_floor": 1,
+    "days_in_inventory": 541,
+    "shipping_cost": 35,
+    "warranty_cost": 52.86
   },
   {
     "sku_id": "SKU-BOOK-004",
@@ -1053,7 +1139,9 @@
     ],
     "current_inventory": 44,
     "inventory_floor": 1,
-    "days_in_inventory": 71
+    "days_in_inventory": 71,
+    "shipping_cost": 35,
+    "warranty_cost": 12.62
   },
   {
     "sku_id": "SKU-BOOK-005",
@@ -1076,8 +1164,10 @@
       }
     ],
     "current_inventory": 72,
-    "inventory_floor": 2,
-    "days_in_inventory": 82
+    "inventory_floor": 1,
+    "days_in_inventory": 82,
+    "shipping_cost": 35,
+    "warranty_cost": 18.84
   },
   {
     "sku_id": "SKU-BOOK-006",
@@ -1101,7 +1191,9 @@
     ],
     "current_inventory": 75,
     "inventory_floor": 1,
-    "days_in_inventory": 55
+    "days_in_inventory": 55,
+    "shipping_cost": 35,
+    "warranty_cost": 35.51
   },
   {
     "sku_id": "SKU-BOOK-007",
@@ -1124,8 +1216,10 @@
       }
     ],
     "current_inventory": 146,
-    "inventory_floor": 3,
-    "days_in_inventory": 57
+    "inventory_floor": 1,
+    "days_in_inventory": 57,
+    "shipping_cost": 35,
+    "warranty_cost": 6.54
   },
   {
     "sku_id": "SKU-BOOK-008",
@@ -1149,7 +1243,9 @@
     ],
     "current_inventory": 14,
     "inventory_floor": 1,
-    "days_in_inventory": 70
+    "days_in_inventory": 70,
+    "shipping_cost": 35,
+    "warranty_cost": 24.09
   },
   {
     "sku_id": "SKU-BOOK-009",
@@ -1173,7 +1269,9 @@
     ],
     "current_inventory": 15,
     "inventory_floor": 1,
-    "days_in_inventory": 47
+    "days_in_inventory": 47,
+    "shipping_cost": 35,
+    "warranty_cost": 32.56
   },
   {
     "sku_id": "SKU-BOOK-010",
@@ -1196,8 +1294,10 @@
       }
     ],
     "current_inventory": 109,
-    "inventory_floor": 2,
-    "days_in_inventory": 72
+    "inventory_floor": 1,
+    "days_in_inventory": 72,
+    "shipping_cost": 35,
+    "warranty_cost": 15.61
   },
   {
     "sku_id": "SKU-BEAU-001",
@@ -1220,8 +1320,10 @@
       }
     ],
     "current_inventory": 110,
-    "inventory_floor": 1,
-    "days_in_inventory": 23
+    "inventory_floor": 2,
+    "days_in_inventory": 23,
+    "shipping_cost": 50,
+    "warranty_cost": 100.83
   },
   {
     "sku_id": "SKU-BEAU-002",
@@ -1245,7 +1347,9 @@
     ],
     "current_inventory": 73,
     "inventory_floor": 1,
-    "days_in_inventory": 32
+    "days_in_inventory": 32,
+    "shipping_cost": 50,
+    "warranty_cost": 29.15
   },
   {
     "sku_id": "SKU-BEAU-003",
@@ -1269,7 +1373,9 @@
     ],
     "current_inventory": 122,
     "inventory_floor": 1,
-    "days_in_inventory": 281
+    "days_in_inventory": 281,
+    "shipping_cost": 50,
+    "warranty_cost": 82.11
   },
   {
     "sku_id": "SKU-BEAU-004",
@@ -1293,7 +1399,9 @@
     ],
     "current_inventory": 54,
     "inventory_floor": 2,
-    "days_in_inventory": 85
+    "days_in_inventory": 85,
+    "shipping_cost": 50,
+    "warranty_cost": 43.39
   },
   {
     "sku_id": "SKU-BEAU-005",
@@ -1316,8 +1424,10 @@
       }
     ],
     "current_inventory": 107,
-    "inventory_floor": 3,
-    "days_in_inventory": 66
+    "inventory_floor": 1,
+    "days_in_inventory": 66,
+    "shipping_cost": 50,
+    "warranty_cost": 47.08
   },
   {
     "sku_id": "SKU-BEAU-006",
@@ -1340,8 +1450,10 @@
       }
     ],
     "current_inventory": 72,
-    "inventory_floor": 1,
-    "days_in_inventory": 23
+    "inventory_floor": 2,
+    "days_in_inventory": 23,
+    "shipping_cost": 50,
+    "warranty_cost": 116.19
   },
   {
     "sku_id": "SKU-BEAU-007",
@@ -1365,7 +1477,9 @@
     ],
     "current_inventory": 34,
     "inventory_floor": 2,
-    "days_in_inventory": 66
+    "days_in_inventory": 66,
+    "shipping_cost": 50,
+    "warranty_cost": 17.54
   },
   {
     "sku_id": "SKU-BEAU-008",
@@ -1389,7 +1503,9 @@
     ],
     "current_inventory": 138,
     "inventory_floor": 2,
-    "days_in_inventory": 1
+    "days_in_inventory": 1,
+    "shipping_cost": 50,
+    "warranty_cost": 95.74
   },
   {
     "sku_id": "SKU-BEAU-009",
@@ -1413,7 +1529,9 @@
     ],
     "current_inventory": 89,
     "inventory_floor": 2,
-    "days_in_inventory": 9
+    "days_in_inventory": 9,
+    "shipping_cost": 50,
+    "warranty_cost": 93.33
   },
   {
     "sku_id": "SKU-BEAU-010",
@@ -1437,7 +1555,9 @@
     ],
     "current_inventory": 109,
     "inventory_floor": 1,
-    "days_in_inventory": 86
+    "days_in_inventory": 86,
+    "shipping_cost": 50,
+    "warranty_cost": 45.1
   },
   {
     "sku_id": "SKU-TOYS-001",
@@ -1461,7 +1581,9 @@
     ],
     "current_inventory": 102,
     "inventory_floor": 3,
-    "days_in_inventory": 86
+    "days_in_inventory": 86,
+    "shipping_cost": 55,
+    "warranty_cost": 55.84
   },
   {
     "sku_id": "SKU-TOYS-002",
@@ -1485,7 +1607,9 @@
     ],
     "current_inventory": 82,
     "inventory_floor": 1,
-    "days_in_inventory": 1
+    "days_in_inventory": 1,
+    "shipping_cost": 55,
+    "warranty_cost": 93.64
   },
   {
     "sku_id": "SKU-TOYS-003",
@@ -1508,8 +1632,10 @@
       }
     ],
     "current_inventory": 59,
-    "inventory_floor": 2,
-    "days_in_inventory": 333
+    "inventory_floor": 1,
+    "days_in_inventory": 333,
+    "shipping_cost": 55,
+    "warranty_cost": 37.91
   },
   {
     "sku_id": "SKU-TOYS-004",
@@ -1532,8 +1658,10 @@
       }
     ],
     "current_inventory": 136,
-    "inventory_floor": 3,
-    "days_in_inventory": 37
+    "inventory_floor": 2,
+    "days_in_inventory": 37,
+    "shipping_cost": 55,
+    "warranty_cost": 77.18
   },
   {
     "sku_id": "SKU-TOYS-005",
@@ -1557,7 +1685,9 @@
     ],
     "current_inventory": 55,
     "inventory_floor": 1,
-    "days_in_inventory": 29
+    "days_in_inventory": 29,
+    "shipping_cost": 55,
+    "warranty_cost": 84.73
   },
   {
     "sku_id": "SKU-TOYS-006",
@@ -1581,7 +1711,9 @@
     ],
     "current_inventory": 121,
     "inventory_floor": 2,
-    "days_in_inventory": 10
+    "days_in_inventory": 10,
+    "shipping_cost": 55,
+    "warranty_cost": 10.08
   },
   {
     "sku_id": "SKU-TOYS-007",
@@ -1604,8 +1736,10 @@
       }
     ],
     "current_inventory": 42,
-    "inventory_floor": 3,
-    "days_in_inventory": 32
+    "inventory_floor": 2,
+    "days_in_inventory": 32,
+    "shipping_cost": 55,
+    "warranty_cost": 124.68
   },
   {
     "sku_id": "SKU-TOYS-008",
@@ -1628,8 +1762,10 @@
       }
     ],
     "current_inventory": 137,
-    "inventory_floor": 2,
-    "days_in_inventory": 23
+    "inventory_floor": 1,
+    "days_in_inventory": 23,
+    "shipping_cost": 55,
+    "warranty_cost": 107.93
   },
   {
     "sku_id": "SKU-TOYS-009",
@@ -1652,8 +1788,10 @@
       }
     ],
     "current_inventory": 140,
-    "inventory_floor": 2,
-    "days_in_inventory": 60
+    "inventory_floor": 1,
+    "days_in_inventory": 60,
+    "shipping_cost": 55,
+    "warranty_cost": 13.16
   },
   {
     "sku_id": "SKU-TOYS-010",
@@ -1676,8 +1814,10 @@
       }
     ],
     "current_inventory": 114,
-    "inventory_floor": 2,
-    "days_in_inventory": 65
+    "inventory_floor": 1,
+    "days_in_inventory": 65,
+    "shipping_cost": 55,
+    "warranty_cost": 96.13
   },
   {
     "sku_id": "SKU-OFFC-001",
@@ -1700,8 +1840,10 @@
       }
     ],
     "current_inventory": 75,
-    "inventory_floor": 2,
-    "days_in_inventory": 32
+    "inventory_floor": 1,
+    "days_in_inventory": 32,
+    "shipping_cost": 40,
+    "warranty_cost": 40.85
   },
   {
     "sku_id": "SKU-OFFC-002",
@@ -1723,9 +1865,11 @@
         "discount_pct": 30
       }
     ],
-    "current_inventory": 65,
-    "inventory_floor": 1,
-    "days_in_inventory": 37
+    "current_inventory": 62,
+    "inventory_floor": 2,
+    "days_in_inventory": 37,
+    "shipping_cost": 40,
+    "warranty_cost": 45.31
   },
   {
     "sku_id": "SKU-OFFC-003",
@@ -1749,7 +1893,9 @@
     ],
     "current_inventory": 103,
     "inventory_floor": 3,
-    "days_in_inventory": 329
+    "days_in_inventory": 329,
+    "shipping_cost": 40,
+    "warranty_cost": 39.61
   },
   {
     "sku_id": "SKU-OFFC-004",
@@ -1772,8 +1918,10 @@
       }
     ],
     "current_inventory": 124,
-    "inventory_floor": 2,
-    "days_in_inventory": 70
+    "inventory_floor": 4,
+    "days_in_inventory": 70,
+    "shipping_cost": 40,
+    "warranty_cost": 16.6
   },
   {
     "sku_id": "SKU-OFFC-005",
@@ -1797,7 +1945,9 @@
     ],
     "current_inventory": 102,
     "inventory_floor": 2,
-    "days_in_inventory": 3
+    "days_in_inventory": 3,
+    "shipping_cost": 40,
+    "warranty_cost": 10.72
   },
   {
     "sku_id": "SKU-OFFC-006",
@@ -1821,7 +1971,9 @@
     ],
     "current_inventory": 61,
     "inventory_floor": 2,
-    "days_in_inventory": 70
+    "days_in_inventory": 70,
+    "shipping_cost": 40,
+    "warranty_cost": 4.25
   },
   {
     "sku_id": "SKU-OFFC-007",
@@ -1844,8 +1996,10 @@
       }
     ],
     "current_inventory": 108,
-    "inventory_floor": 3,
-    "days_in_inventory": 86
+    "inventory_floor": 1,
+    "days_in_inventory": 86,
+    "shipping_cost": 40,
+    "warranty_cost": 23.96
   },
   {
     "sku_id": "SKU-OFFC-008",
@@ -1869,7 +2023,9 @@
     ],
     "current_inventory": 105,
     "inventory_floor": 2,
-    "days_in_inventory": 4
+    "days_in_inventory": 4,
+    "shipping_cost": 40,
+    "warranty_cost": 19.15
   },
   {
     "sku_id": "SKU-OFFC-009",
@@ -1893,7 +2049,9 @@
     ],
     "current_inventory": 51,
     "inventory_floor": 1,
-    "days_in_inventory": 60
+    "days_in_inventory": 60,
+    "shipping_cost": 40,
+    "warranty_cost": 48.47
   },
   {
     "sku_id": "SKU-OFFC-010",
@@ -1917,6 +2075,8 @@
     ],
     "current_inventory": 76,
     "inventory_floor": 2,
-    "days_in_inventory": 49
+    "days_in_inventory": 49,
+    "shipping_cost": 40,
+    "warranty_cost": 26.75
   }
 ]

@@ -70,10 +70,13 @@ def test_generator_produces_schema_valid_data_at_expected_scale():
         threshold = CATEGORY_LIQUIDATION_THRESHOLDS[product["category"]]
         assert product["days_in_inventory"] >= threshold + 20  # comfortably past, not just barely
 
-    required_buyer_fields = {"buyer_id", "persona", "budget_range", "category_affinity", "negotiation_style"}
+    # budget_range removed (Section 2AG): a buyer's spending ceiling is now
+    # derived at negotiation time from PERSONA_DISCOUNT_BANDS against the
+    # real product's list_price, not stored on the buyer record.
+    required_buyer_fields = {"buyer_id", "persona", "category_affinity", "negotiation_style"}
     for buyer in buyers:
         assert required_buyer_fields.issubset(buyer.keys())
-        assert buyer["budget_range"]["min"] < buyer["budget_range"]["max"]
+        assert "budget_range" not in buyer
 
     buyer_ids = [b["buyer_id"] for b in buyers]
     assert len(buyer_ids) == len(set(buyer_ids))

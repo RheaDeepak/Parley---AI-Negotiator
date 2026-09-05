@@ -59,7 +59,7 @@ def log_entry(
     captured once and threaded through every entry, so a dashboard can
     tell which merchant a negotiation belongs to instead of aggregating
     everyone together. Just the id, not the human-readable merchant name
-    -- resolving MERCH-001 -> "Voltstream Electronics" is a presentation
+    -- resolving MERCH-001 -> "Voltstream Marketplace" is a presentation
     concern for whatever reads the log (data/merchants.json is a small,
     static lookup), not something worth repeating on every entry."""
     entry = {

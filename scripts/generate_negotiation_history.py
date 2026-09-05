@@ -103,8 +103,15 @@ def run_one(rng, catalog, buyers, orders, merchants, audit_path, payment_client)
         if merchant is not None:
             risk_approval_tier = merchant["risk_approval_tier"]
 
-    budget_range = buyer["budget_range"]
-    max_acceptable_price = round(rng.uniform(budget_range["min"], budget_range["max"]), 2)
+    # Section 2AG (2026-09-05): derives the buyer's ceiling as a persona-
+    # appropriate discount off THIS drawn product's real list_price,
+    # rather than a fixed absolute budget_range with no relation to
+    # whichever product/qty this run happens to draw -- see
+    # personalization.PERSONA_DISCOUNT_BANDS for the rationale and the
+    # per-persona bands.
+    max_acceptable_price = personalization.budget_from_list_price(
+        buyer["persona"], policy["list_price"], rng,
+    )
     opening_discount_pct = rng.randint(10, 22)
     buyer_agent = BuyerAgent(
         qty=qty, opening_discount_pct=opening_discount_pct,

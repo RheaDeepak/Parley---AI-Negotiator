@@ -11,5 +11,7 @@
   ],
   "max_negotiation_rounds": 5,
   "transaction_approval_threshold": 20000,
-  "inventory_floor": 1
+  "inventory_floor": 1,
+  "shipping_cost": 130,
+  "warranty_cost": 200
 }

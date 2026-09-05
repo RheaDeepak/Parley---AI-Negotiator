@@ -48,6 +48,33 @@
     font-size: 13px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px;
     background: var(--accent-bg); color: var(--text); min-height: 18px;
   }
+  .hint .floor-number { font-weight: 700; font-size: 16px; color: var(--accent); }
+  .hint .floor-evidence { color: var(--muted); }
+  .hint-secondary { margin-top: 8px; color: var(--muted); }
+  .hint-secondary .min-qty-number { font-weight: 700; color: var(--text); }
+  .floor-breakdown { margin-top: 8px; font-size: 12px; }
+  .floor-breakdown summary { cursor: pointer; color: var(--accent); font-weight: 600; user-select: none; list-style: none; }
+  .floor-breakdown summary::-webkit-details-marker { display: none; }
+  .floor-breakdown summary::before { content: "▸ "; }
+  .floor-breakdown[open] summary::before { content: "▾ "; }
+  .floor-breakdown summary:hover { text-decoration: underline; }
+  #floor-breakdown-body { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .floor-candidate {
+    border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; background: var(--card-bg);
+  }
+  .floor-candidate.winner { border-color: var(--green-text); background: var(--green-bg); }
+  .floor-candidate .fc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .floor-candidate .fc-label { font-weight: 600; }
+  .floor-candidate .fc-value { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+  .floor-candidate .fc-detail { color: var(--muted); margin-top: 3px; }
+  .floor-candidate .fc-winner-tag {
+    display: inline-block; margin-left: 6px; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--green-text); font-weight: 700;
+  }
+  .budget-warning {
+    background: var(--red-bg); color: var(--red-text); border-radius: 7px; padding: 9px 10px;
+    font-size: 13px; margin-top: 8px; font-weight: 600;
+  }
   .radio-group { display: flex; flex-direction: column; gap: 6px; }
   .radio-group label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; text-transform: none; color: var(--text); }
   .radio-group input { width: auto; }
@@ -59,6 +86,20 @@
   button.primary { background: var(--accent); color: #fff; }
   button.approve { background: var(--green-text); color: #fff; margin-right: 10px; }
   button.decline { background: var(--red-text); color: #fff; }
+  .spinner {
+    display: inline-block; width: 13px; height: 13px; margin-right: 8px; vertical-align: -2px;
+    border: 2px solid rgba(255,255,255,0.45); border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-lg { width: 22px; height: 22px; border-width: 3px; margin-right: 0; border-color: rgba(37,99,235,0.25); border-top-color: var(--accent); }
+
+  #loading-card {
+    display: none; border: 2px solid var(--accent); background: var(--accent-bg);
+  }
+  #loading-card .loading-row { display: flex; align-items: center; gap: 14px; }
+  #loading-card .loading-title { font-size: 15px; font-weight: 700; }
+  #loading-card .loading-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .badge-none { background: var(--gray-bg); color: var(--gray-text); }
@@ -97,10 +138,31 @@
   #approval-card .summary { font-size: 14px; margin-bottom: 6px; }
   #approval-card .reason { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
 
+  /* Deliberately distinct from #approval-card (plain border) -- amber,
+     matching risk-card's "needs attention" treatment -- so a round-limit
+     decision and a human-approval decision never read as the same card
+     at a glance, even though both reuse the .approve/.decline buttons. */
+  #round-limit-card { display: none; border: 2px solid var(--amber-text); background: var(--amber-bg); }
+  #round-limit-card .summary { font-size: 14px; margin-bottom: 6px; font-weight: 600; }
+  #round-limit-card .reason { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+
   #outcome-card { display: none; }
   #outcome-card .price-line { font-size: 20px; font-weight: 700; margin: 10px 0 4px 0; }
   #outcome-card .detail-line { font-size: 13px; color: var(--muted); }
   #outcome-card .detail-line code { font-family: ui-monospace, Consolas, monospace; }
+
+  #floor-reveal-card { display: none; }
+
+  #payment-card { display: none; }
+  #payment-card .payment-status { font-size: 16px; font-weight: 700; margin: 2px 0 14px 0; }
+  #payment-card .payment-status.success { color: var(--green-text); }
+  #payment-card .payment-status.failed { color: var(--red-text); }
+  #payment-card .payment-status.declined { color: var(--gray-text); }
+  #payment-card .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+  #payment-card .kv-grid .kv { font-size: 13px; }
+  #payment-card .kv-grid .kv label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px; }
+  #payment-card .kv-grid .kv .val { font-weight: 600; }
+  #payment-card .kv-grid .kv .val code { font-family: ui-monospace, Consolas, monospace; font-weight: 400; }
 
   .error-banner {
     background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 10px 14px;
@@ -146,6 +208,10 @@
       <label for="buyer-select">Buyer</label>
       <select id="buyer-select"><option value="">Loading buyers…</option></select>
     </div>
+    <div class="field">
+      <label>List price for this product</label>
+      <div class="hint" id="list-price-hint">Pick a product to see this.</div>
+    </div>
     <div class="row">
       <div class="field">
         <label for="start-price">Starting offer</label>
@@ -156,24 +222,49 @@
         <input type="number" id="max-price" min="0" step="0.01" placeholder="e.g. 1900">
       </div>
     </div>
-    <div class="row">
-      <div class="field">
-        <label for="qty-input">Quantity</label>
-        <input type="number" id="qty-input" min="1" max="20" step="1" value="1">
-      </div>
-      <div class="field">
-        <label>Effective floor (live)</label>
-        <div class="hint" id="floor-hint">Pick a product and buyer to see this.</div>
-      </div>
+    <div class="field">
+      <div class="hint hint-secondary" id="min-qty-hint" hidden></div>
+      <div class="budget-warning" id="budget-warning" hidden></div>
     </div>
     <div class="field">
-      <label>If no agreement after 5 rounds</label>
+      <label for="qty-input">Quantity</label>
+      <input type="number" id="qty-input" min="1" max="20" step="1" value="1">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="buyer-mode-select">Buyer type</label>
+        <select id="buyer-mode-select">
+          <option value="ai" selected>AI (Gemini-driven)</option>
+          <option value="scripted">Scripted (instant, rule-based)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="merchant-mode-select">Merchant type</label>
+        <select id="merchant-mode-select">
+          <option value="rules" selected>Rules (instant, deterministic)</option>
+          <option value="ai">AI (Gemini-driven)</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint hint-secondary" id="ai-mode-note" hidden></div>
+    <div class="field">
+      <label>Request perks</label>
       <div class="radio-group">
-        <label><input type="radio" name="round-limit" value="walk_away" checked> Do not proceed with the transaction</label>
-        <label><input type="radio" name="round-limit" value="accept_final"> Buy at the merchant's final offered price</label>
+        <label><input type="checkbox" id="perk-free-delivery" value="free_delivery"> Request free delivery</label>
+        <label><input type="checkbox" id="perk-extended-warranty" value="extended_warranty"> Request extended warranty</label>
       </div>
     </div>
     <button class="primary" id="start-btn">Start Negotiation</button>
+  </div>
+
+  <div class="card" id="loading-card">
+    <div class="loading-row">
+      <span class="spinner spinner-lg"></span>
+      <div>
+        <div class="loading-title" id="loading-title">Negotiating…</div>
+        <div class="loading-sub" id="loading-sub"></div>
+      </div>
+    </div>
   </div>
 
   <div class="card" id="risk-card">
@@ -190,6 +281,14 @@
 
   <div class="card" id="rounds-container"></div>
 
+  <div class="card" id="round-limit-card">
+    <h2>Negotiation round limit reached</h2>
+    <div class="summary" id="round-limit-summary"></div>
+    <div class="reason" id="round-limit-reason">No agreement was reached within the round limit. You can accept the merchant's final offer, or walk away.</div>
+    <button class="approve" id="round-limit-accept-btn">Accept Final Offer</button>
+    <button class="decline" id="round-limit-decline-btn">Do Not Proceed</button>
+  </div>
+
   <div class="card" id="approval-card">
     <h2>Human approval required</h2>
     <div class="summary" id="approval-summary"></div>
@@ -202,6 +301,21 @@
     <h2>Outcome <span class="badge" id="outcome-badge"></span></h2>
     <div class="price-line" id="outcome-price"></div>
     <div class="detail-line" id="outcome-detail"></div>
+    <div class="detail-line" id="outcome-perks"></div>
+  </div>
+
+  <div class="card" id="floor-reveal-card">
+    <h2>The merchant's true floor, revealed</h2>
+    <div class="hint" id="floor-reveal-hint"></div>
+    <details class="floor-breakdown" id="floor-breakdown" hidden>
+      <summary>How is this calculated?</summary>
+      <div id="floor-breakdown-body"></div>
+    </details>
+  </div>
+
+  <div class="card" id="payment-card">
+    <h2>Payment Details <span class="badge" id="payment-badge"></span></h2>
+    <div id="payment-body"></div>
   </div>
 
 <script>
@@ -214,16 +328,45 @@ const buyerSelect = el("buyer-select");
 const startPriceInput = el("start-price");
 const maxPriceInput = el("max-price");
 const qtyInput = el("qty-input");
-const floorHint = el("floor-hint");
+const listPriceHint = el("list-price-hint");
+const floorBreakdown = el("floor-breakdown");
+const floorBreakdownBody = el("floor-breakdown-body");
+const floorRevealHint = el("floor-reveal-hint");
+const minQtyHint = el("min-qty-hint");
+const budgetWarning = el("budget-warning");
+const perkFreeDelivery = el("perk-free-delivery");
+const perkExtendedWarranty = el("perk-extended-warranty");
+const buyerModeSelect = el("buyer-mode-select");
+const merchantModeSelect = el("merchant-mode-select");
+const aiModeNote = el("ai-mode-note");
 const startBtn = el("start-btn");
 const errorBanner = el("error-banner");
 
+const loadingCard = el("loading-card");
+const loadingTitle = el("loading-title");
+const loadingSub = el("loading-sub");
 const riskCard = el("risk-card");
 const roundsContainer = el("rounds-container");
 const approvalCard = el("approval-card");
+const roundLimitCard = el("round-limit-card");
 const outcomeCard = el("outcome-card");
+const floorRevealCard = el("floor-reveal-card");
+const paymentCard = el("payment-card");
 
 let catalogCache = [];
+// Section 2AF: captured once, at the moment a negotiation is actually
+// submitted -- NOT re-read from the form fields later, since the user
+// could change product/buyer/qty in the setup form while an AI-mode
+// negotiation is still running (it can take minutes). The post-outcome
+// floor reveal must describe the floor for what was ACTUALLY negotiated,
+// not whatever happens to be selected in the form by the time it renders.
+let lastNegotiationParams = null;
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
 
 function showError(message) {
   errorBanner.textContent = message;
@@ -274,10 +417,12 @@ async function loadProducts() {
   productSelect.innerHTML = '<option value="">Loading products…</option>';
   try {
     const products = await api(`/api/catalog?merchant_id=${encodeURIComponent(merchantId)}`);
-    // Deliberately no MRP/list_price in this label -- showing it here
-    // would anchor the buyer's starting-offer input before they've typed
-    // anything. list_price is only revealed after the fact, in the
-    // outcome card's "% off list price" line.
+    // Deliberately no options label here -- the dropdown itself stays
+    // name-only, so it doesn't anchor the buyer's starting-offer input
+    // before they've typed anything. list_price IS shown separately, in
+    // its own "List price for this product" hint below (Section 2AF) --
+    // that's fine to reveal (it's the advertised price); the EFFECTIVE
+    // FLOOR is what stays hidden until after the negotiation completes.
     catalogCache = products;
     productSelect.innerHTML = '<option value="">Select a product…</option>' +
       products.map(p => `<option value="${p.sku_id}">${p.product_name}</option>`).join("");
@@ -285,40 +430,197 @@ async function loadProducts() {
   } catch (e) {
     showError("Could not load catalog: " + e.message);
   }
-  updateFloorHint();
+  refreshFloorForValidation();
 }
 
-let floorHintToken = 0;
+let floorFetchToken = 0;
+// Section 2AF: the last-known effective floor {value, currency} -- used
+// ONLY internally, to power the budget-warning check below. Never
+// rendered anywhere in the setup form anymore -- the actual floor number
+// is revealed to the user only after the negotiation completes (see
+// renderFloorReveal()), even though this same /api/floor-preview data
+// keeps working here in the background for validation.
+let currentFloor = null;
 
-async function updateFloorHint() {
+function updateModeUI() {
+  const aiBuyer = buyerModeSelect.value === "ai";
+  const aiMerchant = merchantModeSelect.value === "ai";
+
+  // AIBuyerAgent decides its own opening offer strategically -- it has no
+  // "use this literal starting price" hook the way the scripted BuyerAgent
+  // does, so the field does nothing in AI mode. Disabling it (rather than
+  // silently ignoring whatever's typed there) keeps the UI honest about
+  // what's actually in effect.
+  startPriceInput.disabled = aiBuyer;
+  startPriceInput.placeholder = aiBuyer ? "AI decides its own opening offer" : "e.g. 1600";
+  if (aiBuyer) startPriceInput.value = "";
+
+  if (aiBuyer || aiMerchant) {
+    const who = aiBuyer && aiMerchant ? "buyer and merchant" : aiBuyer ? "buyer" : "merchant";
+    aiModeNote.textContent =
+      `AI ${who} mode makes real Gemini calls per round -- this negotiation can take several ` +
+      `seconds to a minute or more, instead of being instant.`;
+    aiModeNote.hidden = false;
+  } else {
+    aiModeNote.hidden = true;
+  }
+}
+
+function updateMinQtyHint() {
+  // Static per product -- no API call needed, catalogCache already has
+  // inventory_floor (only "list_price" gets renamed to "mrp" by
+  // /api/catalog; every other product field, including this one, passes
+  // through untouched). Shown as soon as a product is picked, before a
+  // buyer or quantity is even chosen -- this is a hard requirement to
+  // know upfront (a negotiation can't even happen below it), not a
+  // pricing signal, so it stays visible in the setup form (Section 2AF).
+  const product = catalogCache.find((p) => p.sku_id === productSelect.value);
+  if (!product) {
+    minQtyHint.hidden = true;
+    return;
+  }
+  const minQty = product.inventory_floor;
+  minQtyHint.innerHTML = `Minimum order quantity: <span class="min-qty-number">${minQty}</span>`;
+  minQtyHint.hidden = false;
+}
+
+function updateListPriceHint() {
+  // Section 2AF: the real, advertised list_price -- safe to show before
+  // the negotiation starts (it's not a guardrail-derived number), so the
+  // human can set a sensible Maximum Budget. /api/catalog renames the
+  // raw catalog field to "mrp" in its response (a pre-existing,
+  // unrelated convention -- see NEGOTIATION_SPEC.md Section 2AD), so
+  // that's the field read here; it's still list_price's real value.
+  const product = catalogCache.find((p) => p.sku_id === productSelect.value);
+  if (!product) {
+    listPriceHint.textContent = "Pick a product to see this.";
+    return;
+  }
+  listPriceHint.innerHTML = `<span class="floor-number">${product.mrp} ${product.currency}</span>`;
+}
+
+function updateBudgetWarning() {
+  // Section 2AF: the validation itself (comparing maxPrice against the
+  // real effective floor, fetched in the background by
+  // refreshFloorForValidation() below) is UNCHANGED and keeps working --
+  // only the floor NUMBER is no longer shown in this message. The user
+  // finds out the exact figure after the negotiation completes, in the
+  // floor-reveal card.
+  const maxPrice = parseFloat(maxPriceInput.value);
+  if (currentFloor === null || isNaN(maxPrice)) {
+    budgetWarning.hidden = true;
+    return;
+  }
+  if (maxPrice < currentFloor.value) {
+    budgetWarning.textContent =
+      `Your maximum budget (${maxPrice} ${currentFloor.currency}) may be too low for this product, buyer & ` +
+      `quantity combination -- this negotiation will likely end without an agreement. (The merchant's exact ` +
+      `floor is revealed after the negotiation completes, not shown here.)`;
+    budgetWarning.hidden = false;
+  } else {
+    budgetWarning.hidden = true;
+  }
+}
+
+function renderFloorBreakdown(breakdown, currency) {
+  if (!breakdown || !breakdown.length) {
+    floorBreakdown.hidden = true;
+    return;
+  }
+  floorBreakdownBody.innerHTML = breakdown.map(c => `
+    <div class="floor-candidate${c.is_winner ? " winner" : ""}">
+      <div class="fc-top">
+        <span class="fc-label">${escapeHtml(c.label)}${c.is_winner ? '<span class="fc-winner-tag">Wins (highest)</span>' : ""}</span>
+        <span class="fc-value">${c.value.toFixed(2)} ${currency}</span>
+      </div>
+      <div class="fc-detail">${escapeHtml(c.detail)}</div>
+    </div>`).join("");
+  floorBreakdown.hidden = false;
+}
+
+async function refreshFloorForValidation() {
+  // Section 2AF: renamed from updateFloorHint() -- this no longer
+  // renders anything about the floor in the setup form. It still calls
+  // the exact same /api/floor-preview endpoint, purely so
+  // updateBudgetWarning() can keep validating maxPrice against the real
+  // floor in the background; the floor number itself is only ever shown
+  // later, in renderFloorReveal(), after the negotiation completes.
+  updateMinQtyHint();
+  updateListPriceHint();
   const productId = productSelect.value;
   const buyerId = buyerSelect.value;
   const qty = parseInt(qtyInput.value, 10);
   if (!productId || !buyerId || isNaN(qty) || qty < 1) {
-    floorHint.textContent = "Pick a product and buyer to see this.";
+    currentFloor = null;
+    updateBudgetWarning();
     return;
   }
-  const token = ++floorHintToken; // guards against an earlier, slower request landing after a newer one
-  floorHint.textContent = "Calculating…";
+  const token = ++floorFetchToken; // guards against an earlier, slower request landing after a newer one
   try {
     const data = await api(
       `/api/floor-preview?product_id=${encodeURIComponent(productId)}&buyer_id=${encodeURIComponent(buyerId)}&qty=${qty}`
     );
-    if (token !== floorHintToken) return;
-    floorHint.textContent = `${data.effective_floor} ${data.currency} (driven by ${data.evidence_path}${data.risk_level !== "none" ? `, risk=${data.risk_level}` : ""})`;
+    if (token !== floorFetchToken) return;
+    currentFloor = { value: Math.round(data.effective_floor * 100) / 100, currency: data.currency };
+    updateBudgetWarning();
   } catch (e) {
-    if (token !== floorHintToken) return;
-    floorHint.textContent = "Could not compute: " + e.message;
+    if (token !== floorFetchToken) return;
+    currentFloor = null;
+    updateBudgetWarning();
   }
 }
 
+async function renderFloorReveal(outcomeData) {
+  // Section 2AF: the reveal -- shown regardless of outcome (agreed,
+  // rejected, rolled back, declined) so the user can always see what the
+  // real constraint was, even for a negotiation that didn't succeed.
+  // Re-fetches /api/floor-preview with the EXACT product/buyer/qty this
+  // negotiation actually ran with (lastNegotiationParams, captured at
+  // submit time -- never the current, possibly-since-changed form
+  // fields), the same read-only pure-function call the setup form used
+  // to make live, just relocated to after the fact.
+  if (!lastNegotiationParams) {
+    floorRevealCard.style.display = "none";
+    return;
+  }
+  const { productId, buyerId, qty } = lastNegotiationParams;
+  try {
+    const data = await api(
+      `/api/floor-preview?product_id=${encodeURIComponent(productId)}&buyer_id=${encodeURIComponent(buyerId)}&qty=${qty}`
+    );
+    const floorValue = Math.round(data.effective_floor * 100) / 100;
+    const offer = outcomeData.offer;
+    let compareText;
+    if (offer && offer.price != null) {
+      const diffPct = (offer.price - floorValue) / floorValue * 100;
+      compareText = ` The negotiated price (${offer.price} ${data.currency}) was ` +
+        `${Math.abs(diffPct).toFixed(1)}% ${diffPct >= 0 ? "above" : "below"} this floor.`;
+    } else {
+      compareText = " No agreement was reached, so there's no final price to compare -- but this is the " +
+        "minimum the merchant would have needed to accept.";
+    }
+    floorRevealHint.innerHTML =
+      `The merchant's true floor for this negotiation was <span class="floor-number">${floorValue} ${data.currency}</span> ` +
+      `(driven by ${data.evidence_path}${data.risk_level !== "none" ? `, risk=${data.risk_level}` : ""}).${compareText}`;
+    renderFloorBreakdown(data.breakdown, data.currency);
+  } catch (e) {
+    floorRevealHint.textContent = "Could not compute the effective floor for this negotiation: " + e.message;
+    floorBreakdown.hidden = true;
+  }
+  floorRevealCard.style.display = "block";
+}
+
 function resetResultPanels() {
+  loadingCard.style.display = "none";
   riskCard.style.display = "none";
   riskCard.className = "";
   roundsContainer.style.display = "none";
   roundsContainer.innerHTML = "";
   approvalCard.style.display = "none";
+  roundLimitCard.style.display = "none";
   outcomeCard.style.display = "none";
+  floorRevealCard.style.display = "none";
+  paymentCard.style.display = "none";
 }
 
 function renderRiskCard(risk) {
@@ -391,7 +693,97 @@ function renderOutcome(data) {
     priceEl.textContent = data.state;
     detailEl.textContent = "";
   }
+
+  const perksEl = el("outcome-perks");
+  const granted = data.granted_perks || [];
+  const declined = data.declined_perks || [];
+  const perkLabel = (p) => (p === "free_delivery" ? "Free delivery" : p === "extended_warranty" ? "Extended warranty" : p);
+  let perkText = "";
+  if (granted.length) perkText += `Granted: ${granted.map(perkLabel).join(", ")}. `;
+  if (declined.length) perkText += `Declined (would breach the margin floor): ${declined.map(perkLabel).join(", ")}.`;
+  perksEl.textContent = perkText;
+
   outcomeCard.style.display = "block";
+  renderPaymentCard(data);
+  renderFloorReveal(data);
+}
+
+// Payment Details card (Section 4A's curated payment shape --
+// order_id/payment_id/amount/currency/status/error_code/error_description
+// -- exactly as already returned by /api/negotiate and /api/approve,
+// nothing new added on the backend). Only rendered for the three
+// payment-related outcomes; REJECTED/BUYER_UNAVAILABLE never reach a
+// payment step at all, so there's nothing to show. `payment.payment_id`
+// is deliberately never displayed: payment_service.create_order() sets
+// it to null by construction (Razorpay's order.create response has no
+// payment_id -- that only exists after a real checkout/capture, which
+// this simulated flow never performs, see src/agents/payment_service.py),
+// and simulate_payment() never populates it either in either outcome --
+// showing an always-empty field would just read as broken.
+function renderPaymentCard(data) {
+  const state = data.state;
+  if (state !== "COMPLETED" && state !== "ROLLBACK" && state !== "APPROVAL_DECLINED") {
+    paymentCard.style.display = "none";
+    return;
+  }
+
+  const payment = data.payment; // null for APPROVAL_DECLINED and for an insufficient_inventory ROLLBACK
+  const currencySuffix = payment && payment.currency ? ` ${payment.currency}` : "";
+  const offerTotal = data.offer ? (data.offer.price * data.offer.qty).toFixed(2) : "--";
+
+  let statusClass, statusLabel, rows;
+
+  if (state === "COMPLETED") {
+    statusClass = "success";
+    statusLabel = "Payment Successful";
+    rows = [
+      ["Order ID", `<code>${payment.order_id}</code>`],
+      ["Amount Paid", `${(payment.amount / 100).toFixed(2)}${currencySuffix}`],
+      ["Status", payment.status],
+    ];
+  } else if (state === "ROLLBACK") {
+    statusClass = "failed";
+    statusLabel = "Payment Not Completed";
+    if (data.reason === "insufficient_inventory") {
+      rows = [
+        ["Rollback Cause", "Insufficient inventory -- no payment was ever attempted"],
+        ["Amount Not Charged", offerTotal],
+        ["Detail", data.simulated_stock !== undefined
+          ? `Only ${data.simulated_stock} unit(s) in stock (simulated for demo)`
+          : "Negotiated quantity exceeded available stock"],
+      ];
+    } else {
+      rows = [
+        ["Rollback Cause", "Payment failure -- the Razorpay order was created but the charge failed"],
+        ["Order ID", payment ? `<code>${payment.order_id}</code>` : "--"],
+        ["Amount Not Charged", payment ? `${(payment.amount / 100).toFixed(2)}${currencySuffix}` : offerTotal],
+        ["Error Code", payment && payment.error_code ? payment.error_code : "--"],
+        ["Error Description", payment && payment.error_description ? payment.error_description : "--"],
+      ];
+    }
+  } else {
+    // APPROVAL_DECLINED
+    statusClass = "declined";
+    statusLabel = "Payment Not Attempted -- Human Declined";
+    rows = [
+      ["Reason", "The human approver declined this transaction; payment_service was never called"],
+      ["Amount (Not Attempted)", offerTotal],
+    ];
+  }
+
+  const badge = el("payment-badge");
+  badge.textContent = statusLabel;
+  badge.className = "badge " + (
+    statusClass === "success" ? "badge-completed" : statusClass === "failed" ? "badge-rollback" : "badge-approval_declined"
+  );
+
+  el("payment-body").innerHTML =
+    `<div class="payment-status ${statusClass}">${statusLabel}</div>` +
+    `<div class="kv-grid">` +
+    rows.map(([label, val]) => `<div class="kv"><label>${label}</label><div class="val">${val}</div></div>`).join("") +
+    `</div>`;
+
+  paymentCard.style.display = "block";
 }
 
 function revealSequence(data, onDone) {
@@ -417,37 +809,86 @@ async function startNegotiation() {
   resetResultPanels();
   const productId = productSelect.value;
   const buyerId = buyerSelect.value;
-  const startPrice = parseFloat(startPriceInput.value);
+  const buyerMode = buyerModeSelect.value;
+  const merchantMode = merchantModeSelect.value;
+  // Starting offer is disabled (and cleared) in AI buyer mode -- the AI
+  // decides its own opening offer, this field does nothing there. Send a
+  // harmless placeholder rather than blocking on a field the user can't
+  // fill in when it's disabled.
+  const startPrice = buyerMode === "ai" ? 0 : parseFloat(startPriceInput.value);
   const maxPrice = parseFloat(maxPriceInput.value);
   const qty = parseInt(qtyInput.value, 10);
-  const onRoundLimit = document.querySelector('input[name="round-limit"]:checked').value;
+  const requestedPerks = [];
+  if (perkFreeDelivery.checked) requestedPerks.push("free_delivery");
+  if (perkExtendedWarranty.checked) requestedPerks.push("extended_warranty");
 
   if (!productId || !buyerId || isNaN(startPrice) || isNaN(maxPrice) || isNaN(qty) || qty < 1) {
     showError("Pick a merchant, product, buyer, a valid quantity, and fill in both prices before starting.");
     return;
   }
 
+  // Section 2AF: captured now, not re-read from the form later -- the
+  // user could change these fields while an AI-mode negotiation is
+  // still running (it can take minutes), and the post-outcome floor
+  // reveal must describe what was ACTUALLY negotiated.
+  lastNegotiationParams = { productId, buyerId, qty };
+
+  const aiActive = buyerMode === "ai" || merchantMode === "ai";
   startBtn.disabled = true;
-  startBtn.textContent = "Negotiating…";
+  startBtn.innerHTML = '<span class="spinner"></span>Negotiating…';
+
+  loadingCard.style.display = "block";
+  if (aiActive) {
+    const who = buyerMode === "ai" && merchantMode === "ai" ? "AI buyer and AI merchant"
+      : buyerMode === "ai" ? "AI buyer" : "AI merchant";
+    loadingTitle.textContent = `Negotiating with ${who}…`;
+    // Real per-round Gemini latency, not a guess -- live-measured this
+    // session at roughly 2-90 seconds per call (avg ~25-50s), so a full
+    // multi-round negotiation (up to 5 rounds, 2 calls/round) can take
+    // several minutes end to end, not just tens of seconds.
+    loadingSub.textContent =
+      "Real Gemini API calls in progress, one per negotiation round for each AI-driven side. " +
+      "Each call typically takes 20-90 seconds, so a full multi-round negotiation can take several " +
+      "minutes -- please don't close this tab.";
+  } else {
+    loadingTitle.textContent = "Negotiating…";
+    loadingSub.textContent = "Instant -- scripted buyer and rules-based merchant, no external calls.";
+  }
+
   try {
     const data = await api("/api/negotiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         product_id: productId, buyer_id: buyerId, start_price: startPrice, max_price: maxPrice,
-        qty: qty, on_round_limit: onRoundLimit,
+        qty: qty, requested_perks: requestedPerks,
+        buyer_mode: buyerMode, merchant_mode: merchantMode,
       }),
     });
+    loadingCard.style.display = "none";
     revealSequence(data, () => onNegotiationRevealed(data));
   } catch (e) {
     showError("Negotiation failed: " + e.message);
+    loadingCard.style.display = "none";
     startBtn.disabled = false;
     startBtn.textContent = "Start Negotiation";
   }
 }
 
 function onNegotiationRevealed(data) {
-  if (data.status === "pending_approval") {
+  // Two DIFFERENT pause points, deliberately not conflated (Section 2X):
+  // "round_limit_reached" fires when the round cap was hit with NO
+  // agreement at all -- a different decision ("accept the merchant's
+  // final offer, or walk away?") than "pending_approval", which only
+  // ever fires once a price has already been agreed and needs sign-off.
+  if (data.status === "round_limit_reached") {
+    el("round-limit-summary").textContent =
+      `The round limit was reached with no agreement. Merchant's final offer: ${data.final_offer_price} x${data.final_offer_qty}.`;
+    roundLimitCard.style.display = "block";
+    roundLimitAcceptBtn.dataset.negotiationId = data.negotiation_id;
+    roundLimitAcceptBtn.disabled = false;
+    roundLimitDeclineBtn.disabled = false;
+  } else if (data.status === "pending_approval") {
     el("approval-summary").textContent =
       `Agreed at ${data.agreed_price} x${data.agreed_qty} -- awaiting human approval before payment.`;
     el("approval-reason").textContent = data.reason || "";
@@ -464,6 +905,8 @@ function onNegotiationRevealed(data) {
 
 const approveBtn = el("approve-btn");
 const declineBtn = el("decline-btn");
+const roundLimitAcceptBtn = el("round-limit-accept-btn");
+const roundLimitDeclineBtn = el("round-limit-decline-btn");
 
 async function resolveApproval(approved) {
   approveBtn.disabled = true;
@@ -485,14 +928,50 @@ async function resolveApproval(approved) {
   }
 }
 
+async function resolveRoundLimitDecision(accept) {
+  roundLimitAcceptBtn.disabled = true;
+  roundLimitDeclineBtn.disabled = true;
+  const negotiationId = roundLimitAcceptBtn.dataset.negotiationId;
+  try {
+    const data = await api("/api/round-limit-decision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ negotiation_id: negotiationId, accept }),
+    });
+    roundLimitCard.style.display = "none";
+    // Accepting can itself land in the normal approval gate (e.g. the
+    // resulting price/risk tier warrants it) -- a SECOND, separate
+    // pause, not skipped. onNegotiationRevealed() already knows how to
+    // render that card; only fall through to the final outcome when this
+    // resolved all the way to "completed".
+    if (data.status === "pending_approval") {
+      onNegotiationRevealed(data);
+    } else {
+      renderOutcome(data);
+      startBtn.disabled = false;
+      startBtn.textContent = "Start Negotiation";
+    }
+  } catch (e) {
+    showError("Round-limit decision failed: " + e.message);
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Negotiation";
+  }
+}
+
 merchantSelect.addEventListener("change", loadProducts);
-productSelect.addEventListener("change", updateFloorHint);
-buyerSelect.addEventListener("change", updateFloorHint);
-qtyInput.addEventListener("input", updateFloorHint);
+productSelect.addEventListener("change", refreshFloorForValidation);
+buyerSelect.addEventListener("change", refreshFloorForValidation);
+qtyInput.addEventListener("input", refreshFloorForValidation);
+maxPriceInput.addEventListener("input", updateBudgetWarning);
+buyerModeSelect.addEventListener("change", updateModeUI);
+merchantModeSelect.addEventListener("change", updateModeUI);
 startBtn.addEventListener("click", startNegotiation);
 approveBtn.addEventListener("click", () => resolveApproval(true));
 declineBtn.addEventListener("click", () => resolveApproval(false));
+roundLimitAcceptBtn.addEventListener("click", () => resolveRoundLimitDecision(true));
+roundLimitDeclineBtn.addEventListener("click", () => resolveRoundLimitDecision(false));
 
+updateModeUI(); // reflect the default (AI buyer + rules merchant) immediately on load
 loadMerchants();
 loadBuyers();
 </script>

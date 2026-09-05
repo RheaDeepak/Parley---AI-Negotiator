@@ -264,10 +264,16 @@ below cost) — distinct from `min_price <= list_price` (Section 1).
 | Field | Type | Description |
 |---|---|---|
 | `buyer_id` | string | Unique, e.g. `"BUYER-016"`. |
-| `persona` | string | One of 8 labels (Bargain Hunter, Loyal Regular, Bulk Buyer, Window Shopper, Premium Customer, Occasional Buyer, Whale, Stubborn Negotiator). |
-| `budget_range` | object | `{min, max}`. `buyer_to_persona()` uses the midpoint as the concrete `persona.budget` AIBuyerAgent expects. |
+| `persona` | string | Originally one of 8 labels (Bargain Hunter, Loyal Regular, Bulk Buyer, Window Shopper, Premium Customer, Occasional Buyer, Whale, Stubborn Negotiator), assigned by buyer index at data-creation time. Every buyer's own field here is untouched history except `BUYER-001` (relabeled to `"First Time Customer"`, a real perk-eligibility fix — see Section 2Y). `GET /api/buyers` no longer surfaces every buyer or every original label — see Section 2Y's `CURATED_BUYER_IDS`, which exposes exactly 7 buyer_ids, one hand-picked representative per persona (First Time Customer, Window Shopper, Bargain Hunter, Stubborn Negotiator, Loyal Regular, Premium Customer, Bulk Buyer — "Occasional Buyer"/"Whale" retired). |
 | `category_affinity` | string | One of the 8 categories — weights which category `orders.json` mostly buys from for this buyer. |
 | `negotiation_style` | string | Free text, e.g. `"aggressive -- pushes hard for the lowest possible price"` — same free-text shape as `AIBuyerAgent`'s existing `willingness_to_negotiate` (Section 2A). |
+
+`budget_range` (formerly `{min, max}`) was **removed** (Section 2AG,
+2026-09-05): a buyer's spending ceiling is now derived at negotiation
+time from `personalization.PERSONA_DISCOUNT_BANDS` against whichever
+product's real `list_price` is actually in play, rather than a fixed
+absolute range with no relation to it. See Section 2AG for the full
+rationale and every affected call site.
 
 ### `orders.json` — ~200 historical orders, past 12 months
 
@@ -545,7 +551,7 @@ same pattern as `BUYER_MODE`/`MERCHANT_MODE`/`BUYER_BUDGET`:
 | Env var | Effect when set | Default when unset |
 |---|---|---|
 | `PRODUCT_ID` | Looks up that `sku_id` in `data/catalog.json`; builds the negotiation policy from it (`personalization.product_to_policy`) plus `apply_ltv_bonus()`. `max_negotiation_rounds`/`transaction_approval_threshold` aren't catalog fields (Section 1B) — they default to `5`/`20000`, matching `merchant_policy.json`'s existing demo values. | Loads `merchant_policy.json` — Milestone 1/2/3a/3b behavior, byte-for-byte unchanged. |
-| `BUYER_ID` | Looks up that buyer in `data/buyers.json`, sums `data/orders.json` for LTV, and builds `persona`/`max_acceptable_price` from the profile (`personalization.buyer_to_persona`) — budget is the profile's `budget_range` midpoint. | `ltv_bonus_pct = 0`; persona/budget built the same hardcoded way as before. |
+| `BUYER_ID` | Looks up that buyer in `data/buyers.json`, sums `data/orders.json` for LTV, and builds `persona`/`max_acceptable_price` from the profile (`personalization.buyer_to_persona`) — budget is derived via `personalization.budget_from_list_price()` (Section 2AG, 2026-09-05: a persona-appropriate discount off the resolved policy's real `list_price`, replacing the old `budget_range` midpoint). | `ltv_bonus_pct = 0`; persona/budget built the same hardcoded way as before. |
 
 The two are independent: either, both, or neither may be set.
 `BUYER_BUDGET`, when also set, still overrides whatever budget the
@@ -1760,6 +1766,1121 @@ pre-change — one test rewritten in place, not added).
 
 ---
 
+## Section 2T — Bug fix: liquidation silently erased the Risk Agent's discount ceiling (2026-09-04)
+
+Live-reproduced by the user with exact numbers: SKU-ELEC-003 (list_price
+7976.05, min_price 5093.53, `days_in_inventory`=379, fully past the
+Electronics 180-day liquidation threshold). A HIGH-risk negotiation
+(new buyer, qty=12) correctly showed the Risk Agent card stating
+"Discount ceiling: 0% -- full list price only" — but the merchant's
+actual counter and the buyer's final accepted price was 5093.53, not
+7976.05. A ~2882 INR discount a HIGH-risk buyer explicitly should not
+have received.
+
+**Root cause**: `merchant_agent._floor_price()` computes `computed` (the
+discount-cap floor) from whatever `max_discount_pct`/`qty_breaks` the
+`policy` it's given carries — which, for a risk-affected negotiation, are
+already the RISK-TIGHTENED values `apply_risk_discount_cap()` produced
+(e.g. exactly 0% for HIGH, per Section 2S). `_floor_price()` then relaxes
+THIS value toward `min_price` by `liquidation_relaxation_fraction`, with
+no awareness that `computed` might already be an artificially-tightened
+risk ceiling rather than the product's normal, unrestricted floor. On a
+fully-ramped product (`liquidation_relaxation_fraction == 1.0`), that
+interpolation lands exactly on `min_price`, regardless of what `computed`
+started as — silently erasing the risk restriction entirely. Two
+constraints (liquidation's relaxation, risk's tightening) were each
+independently correct on their own, but composed by SEQUENTIAL
+overwriting rather than `max()` — the same bug class Section 2J fixed
+for liquidation-vs-min_price, and Section 2P/2Q fixed for the AI
+console-display gap, now found in a third combination.
+
+**Fix**: `personalization.apply_risk_discount_cap()` now sets
+`policy["risk_discount_capped"] = True` whenever it actually tightens a
+policy (both "moderate" and "high" — never "none", which returns early
+and never sets it) — the same "policy carries a fact, the field is absent
+by default" convention `min_price_is_liquidation_relaxed` already
+established. `_floor_price()` reads this flag: when set, it snapshots
+`computed` (the risk-scaled discount-cap floor) as a THIRD floor
+candidate BEFORE liquidation relaxation ever touches the working
+`computed` value, then returns `max(min_price(+perk_cost), the
+liquidation-relaxed discount-cap floor, the pre-liquidation risk
+ceiling)` — three simultaneously active constraints combined via one
+`max()`, the same principle every other guardrail combination in this
+system already follows. When risk isn't active at all, the third
+candidate is never added, so liquidation-only negotiations are completely
+unaffected — verified via the full existing suite (every pre-existing
+liquidation-only and risk-only test still passes unchanged).
+
+No new function parameter was needed: because every existing caller of
+`_floor_price(policy, qty)` (both inside `check_guardrails()` and inside
+`evaluate_ai()`'s `_validate_against_guardrails()`) reads the same
+`policy` dict, threading the fix through a policy field (like
+`liquidation_relaxation_fraction` itself already does) fixed every call
+site at once, with no call-site changes required anywhere.
+
+### Live-verified (both directions of the priority question)
+
+| Risk level | Pre-fix (buggy) floor | Post-fix floor | Matches |
+|---|---|---|---|
+| HIGH | 5093.53 (= min_price) | **7976.05** | list_price exactly (0% discount) |
+| MODERATE | 5093.53 (= min_price) | **7557.307375** | `list_price * (1 - 21%*0.25)` — the qty_breaks[0] tier (21%, since qty=12 ≥ min_qty=10) scaled by `RISK_MODERATE_DISCOUNT_FACTOR` (0.25) |
+
+MODERATE was independently confirmed to suffer the identical bug before
+the fix (the user explicitly asked whether it did) — not just HIGH. Both
+are now correctly bounded: `min_price (5093.53) < MODERATE floor
+(7557.31) < HIGH floor (7976.05) = list_price`, the expected ordering
+given MODERATE keeps a quarter of normal discount room and HIGH keeps
+none.
+
+Two new tests in `test_personalization.py`
+(`test_high_risk_ceiling_overrides_liquidation_relaxation_on_the_same_product`,
+`test_moderate_risk_ceiling_also_overrides_liquidation_on_the_same_product`)
+use this exact live-reproduced product/scenario. Full suite: 104 passed,
+3 skipped (102 + 2 new), zero regressions, confirmed across 3 repeated
+runs.
+
+---
+
+## Section 2U — Round-limit accept_final forces human approval too (2026-09-04)
+
+`on_round_limit=accept_final` (Section 4D follow-up, Milestone 8) auto-
+accepts the merchant's last counter-offer when the round cap is reached
+with no genuine agreement. That price was never actually agreed to by
+both sides in the normal sense — so it now forces the human-approval gate
+in `run_full_transaction()`, the exact same footing HIGH risk and
+strict-merchant MODERATE risk already have: a human confirms before
+payment, regardless of `policy.transaction_approval_threshold`.
+
+**Reuses the existing mechanism, not a second flow**: the same
+`approval_requested`/`approval_granted`/`approval_declined` audit actions,
+the same `PAUSE_FOR_APPROVAL` pause point (`src/api.py`'s existing
+Approve/Decline endpoints and frontend buttons), the same `confirm()`
+callback for the CLI/test path. `run_negotiation()`'s accept_final branch
+(the one place that returns `AGREEMENT_RECORDED` from the round-cap
+fallback, not the other two acceptance pathways) now sets
+`"round_limit_auto_accepted": True` on its outcome dict — absent
+(`False` via `.get()`) for a genuine buyer/merchant agreement, whichever
+of the other two pathways produced it. `run_full_transaction()` reads
+this alongside `total`/`risk_level` to decide the gate.
+
+**Combining reasons, not duplicating prompts**: the gate condition and
+reason-building were restructured from an if/elif/else (which could only
+ever cite the FIRST matching reason, even when two were simultaneously
+true) into a list of `(evidence_paths, reason_fragment)` triggers,
+collected and joined with `" AND "` into one `approval_requested`
+rationale — e.g. "Approval required: the round limit was reached and the
+merchant's final offer was auto-accepted (on_round_limit=accept_final)
+AND high risk flagged by the Risk Agent for this buyer/request; ...".
+Exactly one `approval_requested` entry fires regardless of how many
+triggers apply; `evidence_paths` is the deduplicated union of every
+applicable trigger's own evidence. This incidentally also fixes a
+pre-existing version of the same gap for the threshold+HIGH-risk
+combination (previously only the threshold reason was ever cited when
+both applied) — not separately requested, but the same restructuring
+that fixes round-limit's combination naturally fixes this one too, since
+both go through the same trigger-collection list now.
+
+### Tests (`test_payment.py`)
+
+- `test_round_limit_auto_accept_forces_approval_even_under_threshold` —
+  the exact scenario requested: NONE risk, final price (4399.12) nowhere
+  near the 20000 threshold, still correctly gated purely by the
+  round-limit trigger; declining produces `APPROVAL_DECLINED`.
+- `test_round_limit_auto_accept_approval_can_also_be_granted` — the
+  approve path completes to `COMPLETED`, same ordering guarantee
+  (`approval_requested` → `approval_granted` → `payment_initiated`) the
+  pre-existing threshold test already asserts.
+- `test_round_limit_auto_accept_combined_with_high_risk_fires_only_one_approval_request`
+  — round-limit + HIGH risk (0-prior-order buyer, qty=10, a
+  `transaction_approval_threshold` override to isolate exactly these two
+  triggers) produces exactly ONE `approval_requested` entry, rationale
+  containing `" AND "` and naming both reasons, `evidence_paths` the
+  union of both.
+- `test_existing_threshold_and_moderate_risk_approval_triggers_unchanged`
+  — zero-regression guard: the pre-Section-2U threshold trigger alone
+  still produces a single-reason rationale with no `" AND "`.
+
+Full suite: 108 passed, 3 skipped (104 + 4 new), zero regressions,
+confirmed across 3 repeated runs. Every pre-existing risk/threshold
+approval test
+(`test_above_threshold_pauses_for_approval_and_declines_without_payment_call`,
+`test_above_threshold_pauses_then_proceeds_once_approved`,
+`test_high_risk_forces_list_price_only_and_still_requires_human_approval`,
+`test_strict_merchant_forces_approval_on_moderate_risk_but_standard_does_not`)
+confirmed passing unchanged by name.
+
+---
+
+## Section 2V — Bug fix: Section 2T's fix over-applied to MODERATE risk, suppressing liquidation for it too (2026-09-04)
+
+**Regression, confirmed live-reproduced:** SKU-ELEC-003 (fully
+liquidation-ramped, `liquidation_relaxation_fraction == 1.0`,
+`days_in_inventory=379`), buyer_id=BUYER-001, MODERATE risk (only "new
+buyer" fired -- `large_request` did not), merchant `risk_approval_tier`
+strict. Computed "Effective floor for this negotiation: 7756.71 INR" --
+essentially list_price (7976.05), with no visible liquidation relaxation
+at all.
+
+**Root cause:** `merchant_agent._floor_price()`'s risk-ceiling candidate
+(added by Section 2T, above) was gated on
+`policy.get("risk_discount_capped", False)` -- a boolean
+`personalization.apply_risk_discount_cap()` set `True` for **both**
+"moderate" and "high" (never for "none"). That's "is risk active at
+all", not "is risk HIGH specifically" -- so MODERATE also got treated as
+a pre-liquidation floor candidate. Since that candidate (MODERATE's
+25%-of-normal ceiling, snapshotted BEFORE liquidation) is always >= the
+liquidation-relaxed value, `max()` picked it every time, suppressing
+liquidation for MODERATE exactly like the original Section 2T bug did
+for HIGH. Only HIGH was ever meant to override/suppress liquidation
+outright (Section 2T's own docstring already said so); MODERATE's
+ceiling is meant to be a tighter STARTING POINT for liquidation to relax
+from, same mechanism as an unrestricted policy, not a floor candidate of
+its own.
+
+**Fix:** replaced the boolean `risk_discount_capped` flag with the
+actual `policy["risk_level"]` string (set by `apply_risk_discount_cap()`
+to `risk["level"]`, still only for "moderate"/"high", never "none"), and
+changed `_floor_price()`'s risk-ceiling gate from "is risk active at
+all" to `policy.get("risk_level") == "high"` specifically. MODERATE and
+"none" now both skip the risk_ceiling candidate entirely and fall
+through to the normal `min_price`/`computed` `max()` -- liquidation
+relaxes the (already risk-tightened, for MODERATE) `computed` exactly as
+it always has for an unrestricted policy. HIGH's behavior (Section 2T)
+is unchanged -- still the one deliberate carve-out.
+
+**All three tiers, side by side, SKU-ELEC-003 at qty=12 (list_price
+7976.05, min_price 5093.53, qty_breaks[0] 21% tier, fully liquidation-
+ramped):**
+
+| Risk tier | Pre-fix floor | Post-fix floor | evidence_path |
+|---|---|---|---|
+| NONE | 5093.53 (unaffected by this bug -- baseline) | **5093.53** | `policy.min_price` |
+| MODERATE | ~7557.31 (bug: liquidation suppressed) | **5093.53** | `policy.min_price` |
+| HIGH | 7976.05 (correct, Section 2T) | **7976.05** (unchanged) | `risk_agent.discount_ceiling` |
+
+MODERATE's post-fix floor lands exactly equal to NONE's on this
+*specific* product -- not a bug, and not evidence MODERATE has no
+effect. Liquidation's interpolation (`computed - fraction * (computed -
+min_price)`) only fully erases the starting-point difference at
+`fraction == 1.0` (this product's exact case, "fully ramped"); on a
+partially-ramped product MODERATE's tighter starting point still lands
+above NONE's floor. What this fix guarantees is that liquidation is no
+longer *suppressed* for MODERATE -- it lands meaningfully below
+list_price, not near it, on any liquidation-eligible product regardless
+of ramp fraction.
+
+**Tests** (`tests/e2e/negotiation/test_personalization.py`):
+- `test_none_risk_liquidation_fully_applies_on_the_liquidation_eligible_product` (new) -- baseline, no risk applied at all.
+- `test_moderate_risk_ceiling_stacks_with_liquidation_relaxation_on_the_same_product` (rewritten -- was `..._also_overrides_liquidation_on_the_same_product`, which asserted the buggy 7557.307375 behavior as *correct*) -- now asserts liquidation stacks through to 5093.53, matching NONE, and asserts the floor is meaningfully below list_price (`< list_price * 0.95`) as the explicit regression guard.
+- `test_high_risk_ceiling_overrides_liquidation_relaxation_on_the_same_product` (unchanged behavior/assertions, only the `risk_discount_capped` → `risk_level` field-name update) -- confirms HIGH's carve-out still holds.
+
+Full suite: 109 passed, 3 skipped (108 + 1 net new test), zero
+regressions, confirmed across 3 repeated runs.
+
+---
+
+## Section 2W — Bug fix: MODERATE risk scaling qty_breaks tiers made bulk orders MORE expensive, not less (2026-09-04)
+
+**Reported by the user, confirmed live-reproduced:** "Floor price
+increases as quantity increases... Floor price should decrease if it's a
+bulk order, not the opposite." SKU-ELEC-001, a REPEAT buyer (4 prior
+orders -- not a new-buyer edge case): at qty=9, floor 8694.28 (12% off,
+unscaled -- risk is "none" below the qty_breaks threshold); at qty=10,
+floor 9435.27 (large_request fires alone -> MODERATE; the 18% qty_breaks
+tier scaled by RISK_MODERATE_DISCOUNT_FACTOR=0.25 down to 4.5%) -- a
+~740 INR INCREASE for ordering one more unit. Not confined to new
+buyers: any buyer's order crossing a qty_breaks threshold trips
+"large_request" (Section 2's own definition: qty >= the product's lowest
+qty_breaks tier), which is the exact same threshold the bulk discount
+itself is keyed to.
+
+**Root cause:** `apply_risk_discount_cap()` (Section 2P/2Q) scaled BOTH
+`max_discount_pct` AND every `qty_breaks` tier's `discount_pct` by the
+same factor, for every non-"none" risk level. That's correct for HIGH
+(new buyer AND large request together -- the actual fraud-shaped
+combination 2P/2Q existed to stop from sailing through the bulk tier
+unscaled) but wrong for MODERATE, which can fire from `large_request`
+ALONE on an ordinary repeat buyer simply placing a bulk order. Scaling
+an 18%-off qty_breaks tier down to 4.5% is very often worse than the
+plain unscaled max_discount_pct (12%) that applied to a smaller qty just
+below the same threshold.
+
+**Fix:** `apply_risk_discount_cap()` now only scales `qty_breaks` tiers
+for `level == "high"`. MODERATE scales `max_discount_pct` alone --
+still flagged, still visible in the risk_review entry, still gates
+approval per the merchant's `risk_approval_tier`, but no longer able to
+make a qty_breaks tier worse than what an unrestricted policy would give
+at the same qty. HIGH's behavior (Section 2P/2Q, and its list-price-only
+enforcement from Section 2N) is completely unchanged -- this was a
+deliberate, confirmed-with-the-user choice (a genuinely new+large
+request is still treated as the fraud-shaped signal it always was; only
+the ordinary-repeat-buyer MODERATE case was in scope for this fix).
+
+**Confirmed with the user before implementing** (two options presented:
+scale only for HIGH vs. guarantee strict floor monotonicity even for
+HIGH) -- chose "Only HIGH risk scales bulk tiers," preserving the
+anti-circumvention protection for the genuinely risky combination.
+
+**Before/after, SKU-ELEC-001, repeat buyer (4 prior orders):**
+
+| qty | risk | floor (pre-fix) | floor (post-fix) |
+|---|---|---|---|
+| 9 | none | 8694.28 | 8694.28 (unaffected) |
+| 10 | moderate | 9435.27 (increase) | **8101.49** (decrease, full 18% tier) |
+| 25 | moderate | ~9262 (increase vs. tier-0) | **7409.90** (decrease, full 25% tier) |
+
+New-buyer HIGH case (qty>=10 also trips new_buyer) is unchanged by
+design: floor still rises to list_price (9879.86) at the threshold --
+the deliberate fraud circuit-breaker, not touched by this fix.
+
+**Test** (`tests/e2e/negotiation/test_personalization.py`):
+`test_moderate_risk_from_large_request_alone_does_not_worsen_the_floor_at_higher_qty`
+-- an isolated unit fixture (repeat buyer, `large_request`-only
+MODERATE), directly asserting `floor_at <= floor_below` across the
+qty_breaks threshold, plus `tightened_policy["qty_breaks"][0]["discount_pct"]
+== 18` (NOT scaled to 4.5) as the mechanism-level check. The existing
+Section 2P/2Q HIGH-risk regression test
+(`test_high_risk_forces_list_price_only_and_still_requires_human_approval`)
+re-confirmed passing unchanged -- HIGH still zeroes qty_breaks tiers.
+
+Full suite: 110 passed, 3 skipped (109 + 1 new test), zero regressions,
+confirmed across 3 repeated runs.
+
+**Separately investigated, no bug found:** the user also reported the
+product dropdown "still isn't showing only the products from the
+selected merchant." Live-verified via direct DOM inspection (switching
+between MERCH-001 and MERCH-002 in the running frontend): the dropdown
+correctly re-filters to exactly that merchant's own products every time,
+zero cross-contamination. MERCH-001 ("Voltstream Electronics")
+genuinely carries a 40-product, 4-category catalog (Electronics, Sports,
+Toys, Office Supplies) per its own `business_description` in
+`data/merchants.json` -- not a filtering defect, just a wider-than-
+expected catalog for that merchant.
+
+---
+
+## Section 2X — Round-limit redesign: pause and let the buyer/human choose, instead of an upfront `on_round_limit` flag (2026-09-04)
+
+**Removed entirely** (per the user's explicit request that this replace,
+not extend, the earlier design): the `on_round_limit` parameter
+(`run_negotiation()`/`run_full_transaction()`/`POST /api/negotiate`) and
+Section 2U's auto-accept-then-forced-approval logic. The frontend's
+upfront "If no agreement after 5 rounds" radio choice is gone too --
+nothing is decided before the negotiation starts.
+
+**New behavior:** hitting `policy.max_negotiation_rounds` with no
+agreement now ALWAYS pauses, returning a new `"ROUND_LIMIT_REACHED"`
+state from `run_negotiation()` -- the merchant's own last real counter-
+offer (never fabricated), plus the exact `policy` (already risk-
+tightened/perk-merged, if applicable) and `requested_perks` the pause
+needs to resolve later. `run_full_transaction()` reuses the SAME
+`PAUSE_FOR_APPROVAL` sentinel the human-approval gate already uses: a
+caller that can't resolve synchronously gets back `"ROUND_LIMIT_PENDING"`
+(mirroring `"PENDING_APPROVAL"` exactly); the CLI path resolves it via a
+real `confirm()` call, same mechanism, no new flow.
+
+Accepting flows through `_process_agreement()` -- the SAME function a
+genuine negotiated agreement uses (extracted out of
+`run_full_transaction()` for exactly this reuse) -- so a round-limit
+acceptance is NEVER exempt from the normal approval gate: if the
+resulting price/risk tier would trigger it for a real agreement, it
+pauses a SECOND, separate time here too (not skipped, not merged into a
+combined rationale the way Section 2U did). Declining returns the
+existing `REJECTED` shape. `src/api.py` exposes this via a NEW, separate
+endpoint, `POST /api/round-limit-decision` (`{negotiation_id, accept}`),
+with its own `_PENDING_ROUND_LIMIT` store -- deliberately not merged
+into `POST /api/approve` / `_PENDING_APPROVALS`, since the two pauses
+can chain and conflating them would make it ambiguous which decision a
+given `negotiation_id` is waiting on. The frontend shows a visually
+distinct card ("Negotiation round limit reached", amber-bordered) from
+the human-approval card (plain-bordered "Human approval required"),
+reusing the `.approve`/`.decline` button styling per the user's request,
+but never the same card.
+
+**Tests** (`tests/e2e/negotiation/test_payment.py`, replacing the four
+Section 2U tests):
+- `test_round_limit_reached_pauses_correctly`
+- `test_round_limit_accept_proceeds_to_normal_payment_flow`
+- `test_round_limit_decline_produces_rejected`
+- `test_round_limit_accept_combined_with_high_risk_pauses_again_not_twice`
+  -- re-confirms the "don't double-prompt" property under the new design:
+  exactly one `round_limit_reached` entry and exactly one SEPARATE
+  `approval_requested` entry, the latter naming ONLY the risk reason
+  (round-limit is no longer a forced trigger at all).
+
+Also updated: three pre-existing round-cap tests
+(`test_ai_buyer_negotiation_terminates_at_round_cap_when_never_converging`,
+`test_round_cap_enforcement_still_works_with_ai_merchant`,
+`test_negotiation_never_converges_terminates_at_round_cap`) now assert
+`"ROUND_LIMIT_REACHED"` with a real offer instead of `"REJECTED"`/`None`,
+since hitting the round cap with a merchant counter in history no longer
+resolves synchronously to REJECTED by default.
+
+---
+
+## Section 2Y — Reduce buyer personas to exactly one representative per label; add a real 5th LTV tier (2026-09-05)
+
+### Persona simplification
+
+Per the user's explicit request to simplify progressively (first: fold
+"Whale"/"Occasional Buyer" into adjacent bands; then: reduce further to
+exactly one buyer per persona), the frontend's buyer dropdown now shows
+exactly 7 buyers, one per persona -- not the ~4-buyer bands the earlier
+relabeling pass (`scripts/relabel_buyer_personas.py`) produced.
+
+**`data/buyers.json` changed for exactly one buyer_id**: `BUYER-001`'s
+`persona` field, `"Window Shopper"` -> `"First Time Customer"`. This is
+a genuine behavioral fix, not cosmetic: `personalization.
+perk_eligibility()`'s rule 2 denies ALL perks to persona `"Window
+Shopper"` regardless of order history, which incorrectly blocked
+BUYER-001 (0 prior orders) from its otherwise-correct rule-3 eligibility
+(`free_delivery`). Live-verified before/after:
+- Before (`persona="Window Shopper"`): `{"eligible": [], "rule":
+  "window_shopper", ...}`
+- After (`persona="First Time Customer"`): `{"eligible":
+  ["free_delivery"], "rule": "new_buyer", ...}`
+
+Every other buyer_id's `persona` field is UNCHANGED -- including the
+retired `"Whale"`/`"Occasional Buyer"` labels still sitting on their
+original buyers, and every non-chosen band member's original label. Per
+the user's own "leave the rest untouched, only curate what the frontend
+shows" option, `GET /api/buyers` (`src/api.py`) no longer deduplicates
+by "first match per persona in file order" (fragile -- silently
+changes if the file is ever reordered, and arbitrary -- picks whoever
+happened to come first, not whoever best fits). It now returns an
+explicit `CURATED_BUYER_IDS` allowlist, each pick confirmed against
+real LTV/order-history numbers before implementing:
+
+| Persona | buyer_id | Real LTV | Orders | Why |
+|---|---|---|---|---|
+| First Time Customer | BUYER-001 | 0.00 | 0 | Only true zero-order buyer |
+| Window Shopper | BUYER-017 | 6182.05 | 4 | Lowest LTV among currently-Window-Shopper buyers |
+| Bargain Hunter | BUYER-027 | 15829.12 | 3 | Closest to its band's mean (15707.54) |
+| Stubborn Negotiator | BUYER-028 | 26915.90 | 2 | Closest to its band's mean (27102.37) |
+| Loyal Regular | BUYER-022 | 39091.54 | 4 | Highest in its band, tied for most orders -- "solid mid-to-high" |
+| Premium Customer | BUYER-004 | 66469.53 | 3 | Closest to its band's mean (62682.29) |
+| Bulk Buyer | BUYER-003 | 103672.43 | **36** | Picked from the combined Bulk Buyer + ex-Whale pool by ORDER COUNT, not raw LTV -- "focused on quantity discounts" is about volume/frequency; 36 orders dwarfs every other candidate (next-highest 31), while the ex-Whale buyers (7-31 orders each, far higher LTV) fit "occasional huge-ticket spender" better than "bulk" |
+
+### A real 5th LTV tier
+
+Checking the 7 picks against `LTV_DISCOUNT_TIERS` surfaced a real gap:
+the old top tier was open-ended (`50000, inf, 8`), so Premium Customer
+(66469.53) and Bulk Buyer (103672.43) landed in the SAME tier and got
+the IDENTICAL 8% bonus despite a ~37k real LTV gap -- indistinguishable
+in a live demo. Confirmed with the user before implementing (same
+discipline as every other threshold in this module): split the top tier
+at 100000 (a clean gap -- next-highest real buyer below is BUYER-013 at
+95906.98, next above is BUYER-003 at 103672.43):
+
+```python
+LTV_DISCOUNT_TIERS = (
+    (0, 5000, 0),
+    (5000, 20000, 2),
+    (20000, 50000, 5),
+    (50000, 100000, 8),
+    (100000, float("inf"), 12),   # new
+)
+```
+
+Premium Customer's own bonus is UNCHANGED (still 8%); only buyers with
+real LTV >= 100000 (BUYER-003/008/009/016) move to the new 12% tier.
+Live-verified: `ltv_discount_bonus(66469.53) == 8`,
+`ltv_discount_bonus(103672.43) == 12`. Still well under
+`HARD_DISCOUNT_CEILING_PCT` (30%); the user explicitly declined coupling
+this to `transaction_approval_threshold` instead, since that field has
+no existing LTV relationship anywhere in the codebase and wiring one in
+would be a larger, separate architectural change than a demo-
+distinctness fix calls for.
+
+**Tests** (`tests/e2e/negotiation/test_personalization.py`):
+`test_ltv_tier_lookup_is_deterministic_and_exact_at_boundaries` extended
+with the new 100000 boundary (`99999.99 -> 8`, `100000 -> 12`,
+`10_000_000 -> 12`, was `8`); `test_ltv_bonus_never_pushes_effective_
+discount_past_hard_ceiling` and the max-bonus assertion in the min-
+price-untouched-by-LTV-bonus test updated from 8 to 12 (the real top
+tier's new value).
+
+Full suite: 113 passed, 3 skipped (110 + 3 net new/changed parametrize
+cases), zero regressions, confirmed across 3 repeated runs.
+
+---
+
+## Section 2Z — Live dashboard: `GET /api/dashboard-data`, shared computation, no duplicated logic (2026-09-05)
+
+**Motivation:** `dashboard.html` was a static file, fully regenerated by
+`scripts/generate_dashboard.py` (baking every stat/table row into
+literal HTML at generation time). The user ran a full session's worth of
+negotiations through `frontend/index.html` and found the dashboard still
+showing yesterday's numbers -- correct behavior for a static file, but
+not what a "dashboard" should do. Fixed by making it live, reusing the
+script's existing computation rather than rewriting it.
+
+**Extraction, not duplication:** every pure computation function that
+used to live inline in `scripts/generate_dashboard.py` (`load_entries`,
+`load_merchant_names`, `group_by_negotiation`, `classify_outcome`, the
+`summarize_*`/`compute_*` helpers) moved, unchanged, into a new module,
+`src/dashboard.py` -- consistent with this project's existing
+architecture where `src/` holds shared logic and `scripts/` are thin CLI
+consumers of it (mirrors how `scripts/generate_negotiation_history.py`
+already imports from `src.negotiation_loop`). A new function there,
+`compute_dashboard_data(log_paths, recent_count, merchants_path)`, is
+the one shared entry point -- reads the log(s), groups by
+`negotiation_id`, and returns a plain JSON-serializable dict (`stats`,
+`merchant_breakdown`, `recent`, `merchant_names`, `meta`).
+
+**Two consumers of the same function, zero duplicated logic:**
+- `scripts/generate_dashboard.py` -- unchanged CLI/behavior/output path;
+  internally now just calls `src.dashboard.compute_dashboard_data()`
+  then its own (unchanged) `render_html()` to produce a static snapshot.
+  Still the fallback for generating one without the API server running.
+- `GET /api/dashboard-data` (`src/api.py`) -- calls the exact same
+  function, returns its result as-is. Read-only aggregation over
+  existing log data; no negotiation/pricing/guardrail logic added
+  anywhere, per the user's explicit constraint.
+
+**`dashboard.html` is now a live page**, structurally like
+`frontend/index.html` (plain HTML/CSS/JS, no framework): on load, and
+every 30 seconds via `setInterval` (no WebSockets, per the user's
+request), it fetches `GET /api/dashboard-data` and renders the stat
+cards / by-merchant table / recent-negotiations table client-side. A
+small pulsing "live" dot in the subtitle turns solid red if a fetch
+fails (e.g. the API server isn't running), with an error banner pointing
+at the likely cause -- same UX pattern as `frontend/index.html`'s own
+error handling. Running `scripts/generate_dashboard.py` will overwrite
+this file with a plain static snapshot again -- deliberate, the explicit
+fallback behavior requested, not a bug.
+
+**Verified identical output** before/after the refactor: both the
+script's printed stats and a direct `compute_dashboard_data()` call
+returned byte-identical numbers (`total_negotiations=155,
+accepted=86, rejected=46, rolled_back=7, other=16, avg_rounds=1.15,
+avg_discount_pct=11.1, total_revenue=2332132.7`). Live-verified in the
+browser: initial load populated correctly from the real API, and the
+30-second refresh fired multiple times over an observed ~35s window
+(3 separate `GET /api/dashboard-data` requests recorded).
+
+**Tests**: `tests/e2e/negotiation/test_generate_dashboard.py` renamed to
+`tests/e2e/negotiation/test_dashboard.py`, import updated from
+`scripts.generate_dashboard` to `src.dashboard` (the functions it tests
+moved there; the test logic itself is unchanged -- same assertions,
+same fixtures).
+
+Full suite: 113 passed, 3 skipped, zero regressions, confirmed across 2
+repeated runs.
+
+---
+
+## Section 2AA — Merchant rename: "Voltstream Electronics" overpromised a single category (2026-09-05)
+
+**Reported by the user, twice**, that the product dropdown "doesn't
+consist of just the items from that particular merchant" -- re-verified
+both times (live API calls and a live frontend click-through, fresh
+server, fresh data) that `GET /api/catalog?merchant_id=...` and the
+frontend's product dropdown were both filtering correctly: zero cross-
+merchant contamination, confirmed by directly inspecting `merchant_id`
+on every returned product. Asked the user to disambiguate; confirmed the
+actual complaint was the first case I'd already found and described
+under Section 2X's product-dropdown investigation: `"Voltstream
+Electronics"` genuinely shows Toys, Sporting Goods, and Office &
+Stationery items alongside Electronics ones.
+
+**Root cause, traced further this time**: `CATEGORY_TO_MERCHANT`
+(`src/personalization.py`) is the single source of truth for which
+category goes to which merchant, and it's a deliberate, structural
+4-categories-per-merchant split (confirmed with the user back when
+multi-merchant support was built, Section 2R) -- NOT an accident:
+- MERCH-001: Electronics, Office & Stationery, Toys & Games, Sporting
+  Goods & Outdoors
+- MERCH-002: Apparel & Fashion, Home & Kitchen, Books & Media, Beauty &
+  Personal Care
+
+The bug was never the filter -- it was that `data/merchants.json`'s
+`merchant_name`/`business_description` for MERCH-001 ("Voltstream
+Electronics") oversold a single category the data never actually
+promised, and even its OWN `business_description` was incomplete
+(mentioned electronics/office tech/sporting equipment, never mentioned
+Toys & Games -- MERCH-002's description similarly never mentioned Books
+& Media, despite both being real assigned categories).
+
+**Fix, per the user's explicit choice** (rename + fix descriptions,
+NOT restructure into more single-category merchants -- that option was
+presented and explicitly declined, given the much larger blast radius:
+new merchant records, per-merchant `risk_approval_tier` reassignment,
+reassigning `merchant_id` on all 80 catalog products, and Section 2R's
+multi-merchant risk-tier tests being built around exactly 2 merchants):
+
+- `MERCH-001`: `"Voltstream Electronics"` -> `"Voltstream Marketplace"`
+  (keeps the brand, drops the false single-category promise);
+  `business_description` rewritten to name all 4 real categories.
+- `MERCH-002`: name unchanged (`"Hearth & Home Living"` doesn't literally
+  claim one category the way "Electronics" did); `business_description`
+  extended to also name Books & Media.
+
+`CATEGORY_TO_MERCHANT` itself, every product's `merchant_id`, and every
+`risk_approval_tier` are completely UNCHANGED -- this is a pure
+presentation-layer fix (one JSON file, `data/merchants.json`), zero risk
+to existing negotiation history, tests, or guardrail behavior.
+`personalization.load_json()` reads this file fresh on every call (no
+caching), so the fix took effect immediately without an API server
+restart -- confirmed live via `GET /api/merchants` and the frontend
+dropdown both showing "Voltstream Marketplace" right away.
+
+`tests/e2e/negotiation/test_dashboard.py`'s references to "Voltstream
+Electronics" are a synthetic, inline test fixture
+(`merchant_names = {"MERCH-001": "Voltstream Electronics", ...}`), not a
+read of the real data file -- confirmed unaffected, no test changes
+needed.
+
+Full suite: 113 passed, 3 skipped, zero regressions, confirmed across 2
+repeated runs.
+
+---
+
+## Section 2AB — Frontend floor-price breakdown: show the calculation, not just the number (2026-09-05)
+
+**Motivation:** after walking the user through how the floor-price
+system works (LTV bonus, liquidation, risk discount cap, and how
+`_floor_price()` combines them via `max()`), they asked to surface that
+SAME explanation live in the frontend, next to the existing effective-
+floor hint -- not just the final number.
+
+**Extraction, not duplication** (same discipline as Section 2Z's
+dashboard work): `merchant_agent._floor_price()`'s candidate computation
+-- the `max(min_price(+perk_cost), liquidation-relaxed discount floor,
+risk ceiling if HIGH)` formula -- was inline in that one function.
+Extracted into a new `_floor_price_candidates(policy, qty,
+granted_perk_cost=0)`, returning `(value, evidence_path, label, detail)`
+4-tuples in the same fixed order the original tie-breaking relied on.
+`_floor_price()` itself now just calls this helper and takes the max --
+**zero behavior change**, verified by running the full suite immediately
+after the extraction (113 passed, 3 skipped, before touching any
+consumer) and confirming byte-identical live output on the exact
+SKU-ELEC-003 HIGH-risk-vs-liquidation scenario from Section 2T/2V.
+
+**`GET /api/floor-preview`** (`src/api.py`) now also returns a
+`breakdown` array -- every candidate `_floor_price_candidates()`
+considered, each with a human-readable `label`/`detail`, its raw
+`value`, and `is_winner` (computed via the SAME first-occurrence-of-the-
+max tie-breaking rule `_floor_price()` itself uses, not a naive
+value-equality check, so a genuine tie between two candidates never
+double-flags a winner). Still purely a second, display-only read of the
+same pure functions run_negotiation() itself uses -- nothing here
+decides anything.
+
+**Frontend**: the existing effective-floor hint gets a new collapsible
+`<details>` ("How is this calculated?") right below it, rendering each
+candidate as a card (label, detail sentence, value), with the winning
+candidate visually highlighted (green border/background + a "Wins
+(highest)" tag) -- reusing the exact `breakdown` data from
+`/api/floor-preview`, no separate computation in JS at all.
+
+**Live-verified**, two real scenarios:
+- SKU-ELEC-003 / BUYER-001 / qty=10 (HIGH risk, fully liquidation-
+  ramped): all three candidates shown (min_price 5093.53, liquidation-
+  relaxed discount floor 5093.53, risk ceiling 7976.05) with the risk
+  ceiling correctly marked as the winner -- matching Section 2T/2V's
+  documented fix exactly.
+- SKU-ELEC-004 / BUYER-022 / qty=1 (no risk, no liquidation): two
+  candidates shown (min_price 3018.57, discount-tier floor 3419.33),
+  discount-tier floor correctly marked as the winner.
+
+Full suite: 113 passed, 3 skipped, zero regressions, confirmed across 2
+repeated runs.
+
+---
+
+## Section 2AC — MRP: a consistent-proportion opening-offer anchor, separate from list_price (2026-09-05)
+
+> **Superseded the same day, Section 2AD below.** The user reconsidered
+> and asked to revert this entirely: give the buyer the REAL `list_price`
+> instead (safe to reveal -- it's the advertised price, not a
+> guardrail-derived number) and have it reason out its own persona-
+> appropriate opening discount, rather than anchoring on a synthetic
+> `MRP = floor x 1.08` figure. Fully reverted -- `compute_mrp()`,
+> `MRP_MARKUP_MULTIPLIER`, the `mrp` parameter on `AIBuyerAgent`, and its
+> three dedicated tests are all removed; `_floor_price()` itself was
+> never touched by this section in the first place, so nothing to revert
+> there. This section is kept for the historical record (per this
+> document's own layered-correction discipline) but does NOT describe
+> current behavior -- see Section 2AD.
+
+**Motivation:** `list_price`'s distance from the effective floor varies
+unpredictably per product -- confirmed live before implementing:
+`list_price/floor` ranged from **1.087x** (SKU-ELEC-004) to **1.566x**
+(SKU-ELEC-003, fully liquidation-ramped) across a 5-product sample, a
+>40 percentage-point spread. Since the AI buyer's prompt showed
+`list_price` as its only reference number, its opening-offer anchor was
+that same inconsistent, sometimes-wildly-inflated number -- for a fully
+liquidation-ramped product, `list_price` could sit 57% above the real
+floor, nowhere near a realistic anchor.
+
+**MRP, confirmed with the user against real numbers**: `MRP = effective
+floor (qty=1, no buyer-specific LTV/risk adjustment) x 1.08` -- the
+multiplier was picked from a 5%/8%/10% choice, shown with real
+before/after numbers for 5 products, before implementing.
+`merchant_agent.compute_mrp(product)` ([merchant_agent.py](src/agents/merchant_agent.py)):
+computes the product's own baseline policy (`product_to_policy()`, NOT
+the caller's already-adjusted negotiation policy -- so MRP is a stable,
+buyer-independent, per-PRODUCT figure, like `list_price` itself, never
+shifting depending on who's asking), reads its floor at qty=1 via the
+EXACT SAME `_floor_price()` the negotiation engine uses, and applies the
+multiplier. Liquidation IS reflected (aging is a property of the
+product, not the buyer); LTV bonus and risk-discount-cap are NOT
+(buyer-specific, would make MRP shift per negotiation, defeating the
+"stable per-product reference" purpose). Multiplier > 1.0 guarantees MRP
+is always strictly greater than the floor -- confirmed by a dedicated
+test across the full product sample; the true floor itself is never
+computed-and-shown anywhere the buyer can see it.
+
+**MRP vs. floor, the same 5-product sample, at the confirmed 1.08x**
+(qty=1, no buyer-specific adjustments):
+
+| SKU | list_price | floor | MRP | list_price/floor | MRP/floor |
+|---|---|---|---|---|---|
+| SKU-ELEC-001 | 9879.86 | 8694.28 | 9389.82 | 1.136 | **1.080** |
+| SKU-ELEC-003 (liquidation-ramped) | 7976.05 | 5093.53 | 5501.01 | 1.566 | **1.080** |
+| SKU-ELEC-004 | 3930.26 | 3615.84 | 3905.11 | 1.087 | **1.080** |
+| SKU-OFFC-001 | 1170.19 | 994.66 | 1074.23 | 1.176 | **1.080** |
+| SKU-SPRT-001 | 1775.24 | 1597.72 | 1725.53 | 1.111 | **1.080** |
+
+`list_price/floor` swings from 1.087 to 1.566 across these five;
+`MRP/floor` is exactly 1.080 for every one of them, by construction.
+
+**`AIBuyerAgent`** ([ai_buyer_agent.py](src/agents/ai_buyer_agent.py)) gained an
+optional `mrp` parameter (default `None`, so every pre-existing caller
+is byte-identical -- confirmed by the full suite passing unchanged
+before any test was added). When given, the prompt names it "MRP" and
+shows ITS value everywhere the prompt used to say "list price" and show
+`list_price`'s value -- consistently, in both the reference-price line
+and the "decide your target/walk_away price" sentence, never mixing the
+two labels. `list_price` itself never appears in the prompt when `mrp`
+is set. Wired into the two real production call sites
+(`src/api.py`'s `/api/negotiate`, `src/negotiation_loop.py`'s CLI
+`__main__` on the `PRODUCT_ID` path only -- the bare `merchant_policy.json`
+fallback has no category/days_in_inventory for `compute_mrp()` to use,
+so it keeps the old list_price-anchored behavior unchanged, same as
+every pre-Section-2AC caller).
+
+**Real negotiation traces, live Gemini calls, same persona/budget,
+before (list_price anchor) vs after (MRP anchor)**:
+
+| Product | list_price | floor | MRP | Before: opening offer (% of floor) | After: opening offer (% of floor) |
+|---|---|---|---|---|---|
+| SKU-ELEC-001 | 9879.86 | 8694.28 | 9389.82 | 6800.00 (78.2%) | 7000.00 (80.5%) |
+| SKU-ELEC-004 | 3930.26 | 3615.84 | 3905.11 | 2800.00 (77.4%) | 2800.00 (77.4%) |
+| SKU-ELEC-003 (liquidation-ramped) | 7976.05 | 5093.53 | 5501.01 | **5500.00 (108.0%)** | 4000.00 (78.5%) |
+
+The two products where `list_price` was already reasonably close to the
+floor (ELEC-001, ELEC-004) show only a small shift, as expected. The
+liquidation-ramped product (ELEC-003) shows the dramatic, motivating
+case: under the OLD anchor, the AI buyer's opening offer (5500) landed
+**above the real floor (5093.53)** -- an opening offer that leaves zero
+negotiating room and would have been instantly acceptable, the exact
+"unrealistic anchor" this section exists to fix. Under the NEW anchor,
+the opening offer (4000, 78.5% of floor) is a normal, realistic opening
+move. Noted honestly, not glossed over: in this specific trace, the
+buyer's own resulting `walk_away_price` (4900) landed just BELOW the
+real floor (5093.53) -- this buyer, now forming a realistic (lower)
+impression of the product's worth from MRP instead of an inflated one
+from `list_price`, set correspondingly conservative price expectations
+and may not reach agreement on this specific product/persona/budget
+combination. That's the LLM's own strategic judgment within its persona
+and budget, not a new constraint this change imposes -- and arguably
+more correct than before, where the buyer's inflated mental model (from
+seeing `list_price` 57% above the true floor) was itself the source of
+an unrealistic anchor.
+
+**Tests**: `test_compute_mrp_is_strictly_greater_than_the_floor_and_matches_the_confirmed_multiplier`,
+`test_compute_mrp_keeps_a_consistent_proportion_despite_wildly_different_list_price_ratios`,
+`test_compute_mrp_includes_liquidation_since_aging_is_a_product_property`
+(`tests/e2e/negotiation/test_personalization.py`);
+`test_opening_offer_prompt_anchors_on_mrp_when_given_not_list_price`,
+`test_opening_offer_prompt_falls_back_to_list_price_when_mrp_not_given`
+(`tests/e2e/negotiation/test_ai_buyer_agent.py`).
+
+Full suite: 118 passed, 3 skipped (113 + 5 new), zero regressions,
+confirmed across 2 repeated runs. No change to
+`check_guardrails()`/`_floor_price()`'s actual computation or behavior --
+display/anchoring only, per the user's explicit constraint.
+
+---
+
+## Section 2AD — Revert Section 2AC: list_price anchor + persona-reasoned opening discount (2026-09-05)
+
+**Reverts Section 2AC entirely**, same day. The user reconsidered: give
+the buyer the real `list_price` (safe -- it's the advertised price, not
+a guardrail-derived number) instead of a synthetic MRP figure, and have
+the LLM reason out its own opening offer as a persona-appropriate
+discount off it, rather than requiring a manually-typed starting price
+for AI mode (which was never actually true -- see below) or anchoring
+on MRP.
+
+**Found and removed** (confirmed with a repo-wide grep before reverting):
+`merchant_agent.compute_mrp()`, `MRP_MARKUP_MULTIPLIER`, the `mrp`
+parameter on `AIBuyerAgent.__init__()`/`_decide()`, the `mrp=` wiring in
+`src/api.py` and `src/negotiation_loop.py`'s CLI `__main__`, and all
+five dedicated tests. Also noted while removing: this new "MRP" concept
+had collided with an existing, unrelated, pre-Milestone-9 convention --
+`GET /api/catalog` already renames `list_price` to `"mrp"` in its JSON
+response (the standard retail sense: MRP = list price), so Section
+2AC's *different* definition (`MRP = floor x 1.08`) was a real naming
+conflict on top of being redundant. That pre-existing catalog rename is
+untouched -- unrelated to this feature either way.
+
+**What was NOT true and needed no change:** the request described AI
+mode as "requiring a manually-typed starting price." It never did --
+`frontend/index.html`'s "Starting Offer" field has been disabled (with
+placeholder "AI decides its own opening offer") in AI buyer mode since
+Milestone 9, and `AIBuyerAgent.initial_offer()` has always asked the LLM
+to decide its own opening price. That part of the request was already
+satisfied; verified, not re-implemented.
+
+**What changed:** `AIBuyerAgent`'s prompt now unconditionally shows
+`list_price` (as it did before Section 2AC), and the first-round
+instruction was strengthened with explicit persona-discount guidance:
+*"Your OPENING OFFER this round should be a reasoned discount off
+list_price, sized to your persona's own negotiating style -- an
+aggressive/bargain-focused persona opens well below list_price, while an
+easygoing or convenience-focused persona opens closer to it. Vary the
+discount naturally based on willingness_to_negotiate and budget; don't
+default to the same fixed percentage regardless of persona."* The
+effective floor is still never computed for or shown to the buyer at
+all -- unchanged from every prior section.
+
+**Incidental discovery while building the verification traces below**:
+picking buyer_ids by their CURRENT `persona` label produced flat,
+undifferentiated opening offers -- tracing it down found that **27 of
+30 buyers in `data/buyers.json` now have a `persona` label that doesn't
+match their own `negotiation_style` text** (e.g. `BUYER-027`:
+`persona="Bargain Hunter"`, `negotiation_style="moderate -- focused on
+quantity discounts over per-unit haggling"` -- verbatim the ORIGINAL
+"Bulk Buyer" persona's description). This is a side effect of Section
+2Y's relabeling pass, which deliberately left `negotiation_style` (and
+`budget_range`, `category_affinity`) untouched while reassigning the
+`persona` label field based on real LTV -- a buyer whose label moved to
+a different tier than its original index-based assignment now carries a
+mismatched style description. `buyer_to_persona()` reads
+`negotiation_style`, not the label, so `AIBuyerAgent`'s actual behavior
+was governed by the (unmoved) original text throughout -- this doesn't
+affect THIS section's correctness, but it does mean the persona LABEL
+shown in the frontend dropdown can misdescribe how that buyer actually
+negotiates. Flagged to the user, not fixed here -- out of scope for this
+request, and Section 2Y's own tests never asserted a label/style
+correspondence to begin with.
+
+**Real negotiation traces**, live Gemini calls, merchant in rules mode
+(so every round is attributable to the real AI buyer), buyers picked by
+their ACTUAL `negotiation_style` text for a clean contrast:
+
+| Product | Buyer (real negotiation_style) | Opening offer | Rounds to close | Final price |
+|---|---|---|---|---|
+| SKU-ELEC-001 (floor 8694.28) | BUYER-017, "aggressive -- pushes hard for the lowest possible price" | 6800.00 (31.2% off list_price, 78.2% of floor) | **4 rounds** (6800 -> 7200 -> 7650 -> accepts 8694.28) | 8694.28 |
+| SKU-ELEC-001 (floor 8694.28) | BUYER-012, "easygoing -- browses often, rarely pushes hard on price" | 9200.00 (6.9% off list_price, 105.8% of floor) | 1 round (already clears the floor) | 9200.00 |
+| SKU-ELEC-003 (liquidation-ramped, floor 5093.53) | BUYER-022, "moderate -- open to a fair discount but not desperate" | 6800.00 (14.7% off list_price, but 133.5% of the real floor) | 1 round | 6800.00 |
+
+The aggressive buyer opens well below list_price and genuinely below
+the floor, forcing real multi-round convergence exactly as requested;
+the easygoing buyer opens close to list_price and settles immediately,
+correctly -- it was never trying to lowball. The liquidation-ramped case
+illustrates the floor-hiding requirement's actual purpose concretely:
+this buyer's "moderate" discount off list_price (14.7%) still landed
+33.5% above the real (liquidation-collapsed) floor -- the merchant kept
+margin the buyer never knew it could have negotiated away, because the
+true floor was never revealed.
+
+**Tests**: the two Section 2AC `AIBuyerAgent` prompt tests were replaced
+with `test_opening_offer_prompt_shows_list_price_and_persona_appropriate_discount_guidance`
+(`tests/e2e/negotiation/test_ai_buyer_agent.py`) -- confirms `list_price`
+appears, `MRP` does not, and the new persona-discount guidance sentences
+are present. The three `compute_mrp()` tests in
+`tests/e2e/negotiation/test_personalization.py` were deleted outright
+(the function no longer exists).
+
+Full suite: 114 passed, 3 skipped (118 - 5 removed + 1 new), zero
+regressions, confirmed across 2 repeated runs -- back to the exact
+pre-Section-2AC test count plus this section's one consolidated test.
+
+---
+
+## Section 2AE — Guard: `run_negotiation()` requires `buyer_id`/`orders` together, or neither (2026-09-05)
+
+**A real near-miss, not a hypothetical:** a verification script for
+Section 2AD called `run_negotiation(policy, buyer, on_event=on_event)`
+without passing `buyer_id`/`orders` at all. For the specific buyer/qty
+pair used, real risk happened to be `"none"` anyway (confirmed
+separately), so the floor claim in that write-up was correct -- but only
+by coincidence. Had a different buyer/qty pair been used, the risk-
+assessment block (`if buyer_id is not None and orders is not None:`)
+would have silently never run, `risk_level` would have stayed Python
+`None` (never assessed) rather than the string `"none"` (assessed,
+found no risk), and the reported floor would have been wrong without
+any indication why.
+
+**The guard added**, at the very top of `run_negotiation()`:
+
+```python
+if (buyer_id is None) != (orders is None):
+    raise ValueError(
+        "run_negotiation() requires buyer_id and orders TOGETHER, or NEITHER -- ..."
+    )
+```
+
+Passing exactly ONE of the two is now a loud `ValueError`, not a silent
+skip -- there's no legitimate reason to pass one without the other,
+since the risk block only ever fires when both are present. Passing
+**neither** remains completely valid and unchanged: every pre-Milestone-5
+caller, and every test that deliberately wants "no personalization,"
+relies on exactly that -- the guard only closes the ASYMMETRIC case,
+not the "explicitly skip" one.
+
+**Honesty check on scope**: this guard would NOT have caught the exact
+mistake in the Section 2AD verification script -- that script omitted
+BOTH arguments (a symmetric, still-valid call), not just one. What it
+does catch is a closely related, arguably more common mistake: a caller
+that has a real `buyer_id` in scope and plumbs it through, but forgets
+`orders` (or vice versa) -- e.g. via two separate code paths that should
+have stayed in sync. There is no way for `run_negotiation()` itself to
+detect "the caller had a buyer_id available elsewhere and simply forgot
+to pass it" -- that's a caller-discipline issue no argument-shape check
+can catch; the asymmetric guard is the real, checkable half of this
+problem.
+
+**Tests** (`tests/e2e/negotiation/test_negotiation_loop.py`):
+`test_buyer_id_without_orders_raises_value_error`,
+`test_orders_without_buyer_id_raises_value_error`,
+`test_neither_buyer_id_nor_orders_is_still_a_valid_no_personalization_call`
+(explicit regression guard: `risk_level is None`, not the string
+`"none"`, confirming the distinction the guard protects still exists).
+
+Full suite: 117 passed, 3 skipped (114 + 3 new), zero regressions,
+confirmed across 2 repeated runs.
+
+---
+
+## Section 2AF — Frontend: move the effective-floor reveal from before to after the negotiation (2026-09-05)
+
+**Restructured what's shown before vs. after**, per the user's explicit
+request -- `frontend/index.html` only, no backend logic touched.
+
+**Before negotiation starts (setup form)**:
+- **Removed entirely**: the live "Effective floor" hint and its
+  "How is this calculated?" breakdown -- no longer shown before Start.
+- **Added**: "List price for this product" -- the real, advertised
+  `list_price` (safe to reveal, it's not a guardrail-derived number),
+  read from `/api/catalog`'s existing response (which already renames
+  the raw `list_price` field to `"mrp"` -- a pre-existing, unrelated
+  convention from Section 2AD -- so no new API call was needed for
+  this). Shown as soon as a product is picked, to help set a sensible
+  Maximum Budget.
+- **Kept unchanged**: "Minimum order quantity" -- a hard requirement to
+  know upfront (a negotiation can't happen below it at all), not a
+  pricing signal, so it stays visible before Start.
+
+**After negotiation completes (outcome view)**: a new card, "The
+merchant's true floor, revealed," appears for EVERY terminal state
+(`COMPLETED`, `REJECTED`, `ROLLBACK`, `APPROVAL_DECLINED` -- wired into
+`renderOutcome()`, the one function already called for all of them), framed
+as the user requested: *"The merchant's true floor for this negotiation
+was X INR (driven by Y, risk=Z)"* -- plus a comparison to the actual
+negotiated price when one exists (*"was N% above/below this floor"*),
+or, for a REJECTED negotiation with no agreement, *"this is the minimum
+the merchant would have needed to accept."* The relocated "How is this
+calculated?" breakdown (Section 2AB) lives here now too, unchanged.
+
+**Validation preserved, per the user's explicit check**: `/api/floor-preview`
+is still called in the background on every product/buyer/qty change
+(`refreshFloorForValidation()`, renamed from `updateFloorHint()` -- same
+endpoint, same request shape, same `currentFloor` state variable) so the
+budget-warning check (`maxPrice < currentFloor.value`) keeps working
+exactly as before. Only the DISPLAYED message changed -- it no longer
+states the floor number (`"...may be too low for this product, buyer &
+quantity combination... The merchant's exact floor is revealed after
+the negotiation completes, not shown here."`), but the underlying
+comparison is byte-identical. Live-verified: setting a budget below a
+real product's floor still triggers the warning with `currentFloor.value`
+correctly populated internally, while the rendered text contains no
+digit of that number.
+
+**A correctness detail found while wiring the reveal**: the floor
+reveal re-fetches `/api/floor-preview` using `lastNegotiationParams` --
+the exact product/buyer/qty captured at the moment `/api/negotiate` was
+actually submitted -- NOT the current setup-form field values. This
+matters because those fields are never disabled during a long AI-mode
+wait (which can take minutes); re-reading them at reveal time could
+describe a floor for a DIFFERENT product/buyer/qty than what was
+actually negotiated, if the user changed the form mid-wait.
+
+**Live-verified**, both branches:
+- Successful negotiation (SKU-ELEC-004, scripted+rules): *"The
+  merchant's true floor for this negotiation was 3419.33 INR (driven by
+  policy.max_discount_pct). The negotiated price (3419.33 INR) was 0.0%
+  above this floor."*
+- Instant-rejected negotiation (same product, budget below `min_price`):
+  *"The merchant's true floor for this negotiation was 3419.33 INR
+  (driven by policy.max_discount_pct). No agreement was reached, so
+  there's no final price to compare -- but this is the minimum the
+  merchant would have needed to accept."*
+
+No `src/api.py`/`src/agents/merchant_agent.py` changes at all -- confirmed
+via `git diff --stat`, zero lines touched by this section. Full suite
+(pure frontend change): 117 passed, 3 skipped, unchanged.
+
+---
+
+## Section 2AG — Remove `budget_range`: derive budget as a persona-appropriate % of the real product's `list_price` (2026-09-05)
+
+**The problem, raised by the user before any code changed**: a buyer's
+spending ceiling was a fixed absolute `{min, max}` rupee range stored on
+the buyer record, with no relationship to whichever product/qty a given
+negotiation actually involved. `generate_negotiation_history.py` draws
+product and buyer independently (`rng.choice(catalog)`, `rng.choice(buyers)`)
+across 130 runs — a cheap-persona buyer could land on an expensive
+product and instant-reject every time; a big-spender persona could land
+on a cheap product and never have its budget bind at all. The user asked
+for a full audit of every `budget_range` consumer before deciding what to
+remove vs. replace, then approved a specific 3-step, verified-in-order
+implementation plan.
+
+**Every real consumer found** (confirmed via `grep` across the whole
+codebase, not just the frontend):
+1. `personalization.buyer_to_persona()` — read it unconditionally for the
+   `persona.budget` midpoint. Two callers: `src/api.py` (interactive
+   frontend, AI mode) immediately overwrote the result with the
+   human-typed Maximum Budget (`req.max_price`) right after — the
+   midpoint was computed and discarded, never actually used; and
+   `src/negotiation_loop.py`'s CLI `BUYER_ID`-only fallback (no
+   `BUYER_BUDGET` set), where the midpoint genuinely was the effective
+   budget.
+2. `generate_negotiation_history.py` — read `budget_range` directly
+   (bypassing `buyer_to_persona()`), no fallback. The real bug.
+3. `generate_synthetic_data.py`'s `generate_buyers()` — *wrote*
+   `budget_range` when building `buyers.json` from scratch.
+4. `test_synthetic_data_generator.py` — schema assertion requiring the
+   field and `min < max`.
+
+**Confirmed the interactive frontend was never at risk**: `NegotiateRequest.max_price`
+is a required field with no default — the human-typed Maximum Budget
+fully overrides `buyer_to_persona()`'s output in AI mode, and scripted
+mode never reads `budget_range` at all. Removing the field could not
+silently change frontend behavior; it could only crash `buyer_to_persona()`
+if left reading a now-missing key.
+
+**The fix**: `personalization.PERSONA_DISCOUNT_BANDS` — a
+`persona label -> (low_pct, high_pct)` table, and
+`budget_from_list_price(persona, list_price, rng)`, which returns
+`list_price * (1 - uniform(low_pct, high_pct)/100)`. Keyed by the
+buyer's `persona` label (the real, LTV-grounded field — Section 2Y), not
+`negotiation_style` free text, because `generate_negotiation_history.py`
+draws from all 30 `buyers.json` entries and `negotiation_style` still
+carries stale, inconsistent wording for the 23 buyers this task's
+persona/style rewrite (below) didn't touch (Section 2AD's "27/30
+mismatched" finding). Bands for the 7 curated personas came from the
+user's explicit directional requirements (aggressive/cautious/passive/
+etc., confirmed against real product/qty walkthroughs — see below);
+`Whale` and `Occasional Buyer` (real labels the generator can still
+draw, but outside the curated 7) were proposed and confirmed separately,
+same session:
+
+| Persona | Band (% off list) |
+|---|---|
+| Premium Customer | 0–8% |
+| First Time Customer | 5–15% |
+| Whale | 5–15% |
+| Loyal Regular | 10–18% |
+| Bulk Buyer | 12–24% |
+| Stubborn Negotiator | 12–22% |
+| Occasional Buyer | 15–25% |
+| Bargain Hunter | 18–30% |
+| Window Shopper | 25–40% |
+
+**Bulk Buyer range sanity-checked against real products before
+implementing** (per the user's explicit request): at qty 10–20 against
+real Electronics-tier products (`_floor_price()` computed with BUYER-003's
+real LTV bonus, +12%), the persona-band approach produces genuine
+negotiation tension — e.g. SKU-ELEC-004 (USB-C Hub) at qty=20:
+list_price total 78,605.20, floor total 60,371.40, comfortably inside a
+persona-appropriate budget, requiring real back-and-forth to reach.
+
+**Implemented in the confirmed order, each step verified before the
+next**:
+
+1. **`generate_negotiation_history.py`**: `max_acceptable_price` now
+   comes from `personalization.budget_from_list_price(buyer["persona"], policy["list_price"], rng)`
+   instead of `rng.uniform(budget_range["min"], budget_range["max"])`.
+   Verified with real draws (seed=42): every persona's resulting
+   `pct_off` landed inside its band regardless of which product it hit
+   (e.g. Window Shopper 34.03% off a ₹3990 curtain, Premium Customer
+   1.76%/3.68% off a toy and a desk lamp). A real end-to-end batch
+   (`--n 40 --seed 7`, real `run_full_transaction()` calls) produced 27
+   Accepted / 9 Rejected / 4 Rolled back — a healthy mix, not the old
+   failure mode of a fixed persona always instant-rejecting or always
+   trivially affording regardless of the product drawn.
+
+2. **`personalization.buyer_to_persona()`**: no longer reads
+   `budget_range`; `"budget"` is omitted from the returned dict entirely.
+   `src/api.py` is unaffected (it always overwrites the key immediately
+   after calling this function, whether or not it existed).
+   `src/negotiation_loop.py`'s CLI `BUYER_ID`-only fallback now calls
+   `budget_from_list_price(buyer_profile["persona"], policy["list_price"], random)`
+   against the same table (not seeded — an interactive CLI demo
+   invocation, not the deterministic batch generator) instead of reading
+   `persona_from_profile["budget"]` from a field that no longer exists.
+   `BUYER_BUDGET`, when set, still overrides it unchanged.
+   Live-verified against real buyer/product pairs (no `BUYER_BUDGET`
+   set): `BUYER-004` (Premium Customer) against SKU-ELEC-001
+   (list_price 9879.86) → budget 9715.77 (1.66% off, inside 0–8%);
+   `BUYER-003` (Bulk Buyer) against SKU-ELEC-004 (list_price 3930.26) →
+   budget 3234.92 (17.7% off, inside 12–24%); `BUYER-017` (Window
+   Shopper) against SKU-OFFC-002 (list_price 1263.03) → budget 845.03
+   (33.09% off, inside 25–40%). Also verified: `BUYER_BUDGET` override
+   still wins when set; the "neither `BUYER_ID` nor `BUYER_BUDGET` set"
+   hardcoded-default path (`4450.0`) is untouched. Full suite: 117
+   passed, 3 skipped, unchanged.
+
+3. **`data/buyers.json` + schema/test/doc cleanup**, only after 1 and 2
+   were verified:
+   - `budget_range` removed from all 30 buyers (no code reads it
+     anymore).
+   - For exactly the 7 curated `buyer_ids` (Section 2Y), `negotiation_style`
+     rewritten to genuinely match its persona label's meaning (the
+     original Section 2AD mismatch this task set out to fix — e.g.
+     `negotiation_style`/`budget_range` were reassigned by index at
+     data-creation time and never touched when `persona` was later
+     relabeled by real LTV):
+
+     | buyer_id | Persona | Old `negotiation_style` | New `negotiation_style` |
+     |---|---|---|---|
+     | BUYER-001 | First Time Customer | `aggressive -- pushes hard for the lowest possible price` | `cautious -- new to this merchant, wary of commitment, pushes for a modest discount before trusting the deal` |
+     | BUYER-017 | Window Shopper | `aggressive -- pushes hard for the lowest possible price` | `passive -- browses without urgency, rarely converts, quick to walk away rather than negotiate hard` |
+     | BUYER-027 | Bargain Hunter | `moderate -- focused on quantity discounts over per-unit haggling` | `aggressive -- relentlessly price-focused, anchors low and pushes hard for the steepest possible discount` |
+     | BUYER-028 | Stubborn Negotiator | `easygoing -- browses often, rarely pushes hard on price` | `unyielding -- slow to concede, holds firm on its position round after round` |
+     | BUYER-022 | Loyal Regular | `moderate -- open to a fair discount but not desperate` | `moderate -- fair-minded, open to a reasonable discount but not confrontational, values the ongoing relationship` |
+     | BUYER-004 | Premium Customer | `easygoing -- browses often, rarely pushes hard on price` | `easygoing -- budget-insensitive, values convenience and quality over squeezing out a discount` |
+     | BUYER-003 | Bulk Buyer | `moderate -- focused on quantity discounts over per-unit haggling` | `moderate -- quantity-focused, negotiates hard on volume discounts but only mildly sensitive to per-unit price` |
+
+     This resolves the BUYER-003/BUYER-027 and BUYER-001/BUYER-017
+     byte-identical-style duplicates too. `category_affinity` and
+     `buyer_id` were untouched, as scoped. All other 23 buyers' (now
+     `budget_range`-free) `negotiation_style` text still carries the
+     original Section 2AD mismatch — out of scope for this task, they
+     don't back the 7-buyer curated dropdown, and their spending
+     ceiling is now driven by `persona` (real) rather than
+     `negotiation_style` (stale) anyway.
+   - `generate_synthetic_data.py`: `PERSONAS` entries dropped their
+     `budget_range` tuple element; `generate_buyers()` no longer writes
+     the field.
+   - `test_synthetic_data_generator.py`: `required_buyer_fields` no
+     longer includes `budget_range`; asserts it's absent instead of
+     `min < max`.
+   - `NEGOTIATION_SPEC.md`'s `buyers.json` schema table and the
+     `BUYER_ID` env-var table (Section 2D) updated to describe the new
+     mechanism (this section is the reference target for both).
+
+   Full suite after this step: 117 passed, 3 skipped, unchanged
+   throughout all three steps.
+
+---
+
 ## Section 3 — State machine
 
 ### States
@@ -2269,6 +3390,182 @@ the Recent Negotiations table and a per-merchant stats breakdown, and
 `audits/dashboard_seed.log` was regenerated (same `--seed 42`, same 130
 negotiations, same outcome mix) so its entries carry `merchant_id` too —
 the previous seed batch predated this field.
+
+---
+
+## Section 4E — Multi-dimensional negotiation: perks (Milestone 9)
+
+Buyers can request perks (`free_delivery`, `extended_warranty`) alongside
+price. Eligibility is fully deterministic — same "bounded input, pure
+function, no LLM discretion at the boundary" pattern as LTV/risk/
+liquidation. The one genuinely new mechanism (and the one this section
+exists to prove correct) is threading a granted perk's cost through the
+*same* margin-floor calculation everything else already goes through,
+rather than adding a second, separate check — the exact bug class that
+already bit this project once for liquidation (Section 2F/2J) and once
+for the Risk Agent's `qty_breaks` scaling (Section 2P/2Q): a protection
+added in one place that a parallel pathway silently bypasses.
+
+### Cost fields
+
+`shipping_cost`/`warranty_cost` (INR, what each perk actually costs the
+merchant to provide) were added to every catalog product and to
+`merchant_policy.json`. `shipping_cost` is a flat per-category table (physical
+bulk, not price-driven); `warranty_cost = round(cost * 0.06, 2)` (price-
+driven — reserve rate for 1-year extended coverage). Regenerating
+`data/catalog.json` (`--seed 42`) was purely additive: the generator's RNG
+consumption sequence is unchanged (both new fields are deterministic
+lookups/formulas over already-computed values, no new `rng.*` calls), so
+`data/buyers.json`/`data/orders.json` came back byte-identical and every
+other catalog field was untouched.
+
+| Category | `shipping_cost` |
+|---|---|
+| Books & Media | 35 |
+| Office & Stationery | 40 |
+| Beauty & Personal Care | 50 |
+| Toys & Games | 55 |
+| Apparel & Fashion | 60 |
+| Home & Kitchen | 90 |
+| Sporting Goods & Outdoors | 100 |
+| Electronics | 130 |
+
+`merchant_policy.json` (the single-SKU, non-catalog fixture): `shipping_cost:
+130`, `warranty_cost: 200`.
+
+### Removed: `COST_MARGIN_MULTIPLIER` / `cost_floor_price()`
+
+Discovered while designing the perk-cost floor check: `personalization.py`
+carried a SECOND, independently-computed margin floor —
+`COST_MARGIN_MULTIPLIER = 1.02` (confirmed with the user back in Milestone
+3c, Section 2E) — that `product_to_policy()` used to defensively re-clamp
+`min_price` (`max(cost_floor_price(product), product["min_price"])`). But
+`scripts/generate_synthetic_data.py` already computes `min_price = cost *
+1.15` at data-creation time (a DIFFERENT multiplier, 15% not 2%) — since
+1.15 > 1.02, the runtime re-clamp was never actually binding for any real
+generated product; it was vestigial, duplicating a concept the generator
+already owned, with a conflicting number.
+
+Confirmed with the user: removed entirely, not reconciled to match. Exactly
+one place now computes the cost-derived floor — the generator, at
+data-creation time. `product_to_policy()` trusts `product["min_price"]` as
+given. Accepted tradeoff (explicitly confirmed, not an oversight): this
+removes a defensive clamp against a malformed catalog entry (raw `min_price`
+set unsafely low relative to `cost`) — a real, if narrow, protection this
+project is choosing to give up in exchange for a single source of truth.
+Three tests referencing the removed function were updated: one deleted
+(tested the function directly), two rewritten to assert the new pass-
+through behavior instead of the old re-clamp.
+
+### Eligibility
+
+`personalization.perk_eligibility(buyer_id, orders, persona, risk_level)` —
+pure function, called once per negotiation (same place/timing as
+`risk_assessment()`), reusing the risk_level `risk_assessment()` already
+computed rather than re-deriving it. Checked in this order, each
+overriding what follows:
+
+| Rule | Condition | Eligible perks |
+|---|---|---|
+| 1 | `risk_level == "high"` | `[]` — overrides everything, consistent with the discount ceiling also being zeroed at HIGH risk |
+| 2 | `persona == "Window Shopper"` | `[]` — regardless of order history |
+| 3 | `count_prior_orders(buyer_id, orders) == 0` | `["free_delivery"]` |
+| 4 | `count_prior_orders(buyer_id, orders) > 0` (any other persona) | `["extended_warranty"]` |
+
+A buyer is eligible for at most one perk by construction (rules 3/4 are a
+strict partition on order count). This order-count threshold is
+DELIBERATELY not `RISK_NEW_BUYER_MAX_PRIOR_ORDERS` (2, the Risk Agent's own
+"new buyer" factor) — a different question (has this buyer ever ordered
+here at all, vs. risk of abusive lowballing) — confirmed with the user as
+an intentional distinction.
+
+Resolved once, upfront, in `run_negotiation()` (only when `buyer_id`/
+`orders`/`persona` are all given and `requested_perks` is non-empty — every
+pre-Milestone-9 caller skips this block entirely, byte-identical
+behavior), and merged into a local `policy` copy as
+`policy["eligible_perks"]` — same "local reassignment, never mutate the
+caller's dict" discipline as `apply_risk_discount_cap()`. Logged as a new
+`perk_review` audit entry (same shape/spirit as `risk_review`): which
+perks were requested, which rule applied, and which requests were
+immediately declined as ineligible (no LLM/margin discretion on that
+boundary at all — this is resolved before the negotiation ever produces
+an offer).
+
+### The margin-floor check (the part this section exists to get right)
+
+`merchant_agent._floor_price(policy, qty, granted_perk_cost=0)` — new
+optional parameter, default 0 (byte-identical for every existing caller).
+When given: `floor = max(existing_discount_derived_floor, policy["min_price"]
++ granted_perk_cost)`. The SAME `max()` calculation everything else already
+flows through — not a second, parallel check.
+
+Perks are checked for affordability ONLY at the moment of acceptance, never
+during counter-price computation — using whatever price the negotiation
+actually landed on. `merchant_agent._resolve_perks(offer, policy,
+requested_perks)`: filters `requested_perks` down to `policy["eligible_perks"]`
+(ineligible requests were already conclusively declined upstream), sums
+the candidates' cost (`PERK_COST_FIELDS` maps `free_delivery` →
+`shipping_cost`, `extended_warranty` → `warranty_cost`), and re-checks the
+floor with that cost folded in. If the accepted price still clears it, all
+candidates are granted; otherwise all are declined (all-or-nothing — a
+buyer is eligible for at most one perk by construction, so there is no
+meaningful "grant some, decline others" case). This keeps the margin check
+contained to a single, reused function, and never touches the existing
+counter-price logic at all.
+
+Three acceptance pathways all resolve perks the same way:
+1. Merchant directly accepts the buyer's offer (`check_guardrails()`'s own
+   `_accept()` branch calls `_resolve_perks()` internally).
+2. Buyer accepts the merchant's counter (`run_negotiation()`'s while loop
+   calls `merchant_agent._resolve_perks()` directly, since `check_guardrails()`
+   never re-runs against a price it didn't itself propose).
+3. The `on_round_limit=accept_final` round-cap fallback (Section 4D
+   follow-up) — same direct `_resolve_perks()` call against the merchant's
+   last real counter-offer.
+
+`granted_perks`/`declined_perks` (lists) are threaded through every
+downstream state dict (`AGREEMENT_RECORDED`, `PENDING_APPROVAL`,
+`ROLLBACK`, `APPROVAL_DECLINED`, `COMPLETED`) the same way `negotiation_id`/
+`product_name`/`list_price`/`merchant_id` already are, and surfaced
+structurally in `src/api.py`'s `/api/negotiate`/`/api/approve` responses —
+never left for a consumer to regex out of rationale prose.
+
+### AI mode (`MERCHANT_MODE=ai`)
+
+`evaluate_ai()`/`check_guardrails()` both take `requested_perks` and behave
+identically to rules mode: Layer 1 (`check_guardrails()`) makes the
+definitive eligibility+affordability decision unconditionally, regardless
+of merchant mode. The LLM's `MerchantDecision` schema was deliberately NOT
+extended with a "grant this perk" field — Layer 2 only ever decides
+accept/counter/reject on price, as before; whichever grant/decline
+`check_guardrails()` already computed rides through unchanged whenever an
+accept is validated. No new LLM-trust surface for a money-relevant
+decision, matching "no LLM discretion" already established for eligibility.
+In `MERCHANT_MODE=rules` specifically (no LLM to exercise "whether/when"
+discretion at all — confirmed with the user): an eligible, affordable perk
+is auto-granted by the same deterministic default.
+
+### Live-verified
+
+A buyer negotiated down to EXACTLY the combined min_price/discount-cap
+floor (both deliberately tied at 800.0 in the test fixture), eligible for
+`extended_warranty` (cost 40.0): the merchant accepted the price (800.0
+clears the non-perk floor) but declined the perk, rationale citing the
+margin floor explicitly — `granted_perks: []`, `declined_perks:
+["extended_warranty"]`. Also live-verified end-to-end through the real
+frontend (checkbox → `/api/negotiate` → real Razorpay payment): a granted
+`extended_warranty` shows up both inline in the round transcript's accept
+rationale and in the outcome card ("Granted: Extended warranty.").
+
+### Frontend
+
+Two checkboxes ("Request free delivery", "Request extended warranty"),
+always both available regardless of buyer/persona — deliberately not
+pre-filtered by eligibility, since an ineligible request being correctly
+declined with a clear reason is a good, honest demo moment, not something
+to hide. `requested_perks` threaded into `POST /api/negotiate`'s body;
+`granted_perks`/`declined_perks` surfaced in the round transcript's accept
+rationale and in the final outcome card.
 
 ---
 

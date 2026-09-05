@@ -1,8 +1,8 @@
 [
   {
     "merchant_id": "MERCH-001",
-    "merchant_name": "Voltstream Electronics",
-    "business_description": "Consumer electronics and tech-adjacent gear -- audio, computing accessories, office tech, and outdoor/sporting equipment.",
+    "merchant_name": "Voltstream Marketplace",
+    "business_description": "A general marketplace spanning consumer electronics and tech-adjacent gear -- audio, computing accessories, office tech and stationery, toys and games, and outdoor/sporting equipment.",
     "currency": "INR",
     "supported_payment_methods": ["card", "upi", "netbanking", "wallet"],
     "shipping_rules": {
@@ -16,7 +16,7 @@
   {
     "merchant_id": "MERCH-002",
     "merchant_name": "Hearth & Home Living",
-    "business_description": "Home, kitchen, apparel, and personal-care goods for everyday living.",
+    "business_description": "A lifestyle marketplace for everyday living -- home and kitchen, apparel and fashion, books and media, and beauty and personal-care goods.",
     "currency": "INR",
     "supported_payment_methods": ["card", "upi", "netbanking"],
     "shipping_rules": {

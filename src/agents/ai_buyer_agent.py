@@ -121,7 +121,12 @@ class AIBuyerAgent:
                 "You have not yet set your private target_price or walk_away_price -- decide them "
                 "now, on this first offer. They will then be pinned for the rest of this negotiation "
                 "and cannot change in later rounds, so choose them carefully from the product's list "
-                "price and your persona's budget."
+                "price and your persona's budget. Your OPENING OFFER this round should be a reasoned "
+                "discount off list_price, sized to your persona's own negotiating style -- an "
+                "aggressive/bargain-focused persona opens well below list_price, while an easygoing "
+                "or convenience-focused persona opens closer to it. Vary the discount naturally based "
+                "on willingness_to_negotiate and budget; don't default to the same fixed percentage "
+                "regardless of persona."
             )
         else:
             pinned_desc = (

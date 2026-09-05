@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import uuid
 from datetime import datetime, timezone
 
@@ -22,6 +23,24 @@ def _log(on_event, round_num, *args, **kwargs):
     if on_event:
         on_event(entry, round_num)
     return entry
+
+
+def _perk_outcome_note(granted_perks, declined_perks):
+    """Milestone 9 (Section 4E). Same wording merchant_agent._accept()
+    uses when the merchant itself accepts the buyer's offer -- reused
+    here for the other two acceptance paths (buyer accepting a merchant
+    counter; _accept_round_limit_offer() below), both of which call
+    merchant_agent._resolve_perks() directly since check_guardrails()
+    never runs again for a price it didn't itself propose."""
+    note = ""
+    if granted_perks:
+        note += f" Perk(s) granted: {', '.join(granted_perks)}."
+    if declined_perks:
+        note += (
+            f" Perk(s) declined: {', '.join(declined_perks)} -- the combined price concession and "
+            "perk cost would breach the minimum margin floor."
+        )
+    return note
 
 
 def _log_buyer_strategy_if_present(
@@ -58,7 +77,8 @@ def _log_buyer_unavailable(
 
 def run_negotiation(
     policy, buyer, audit_path=DEFAULT_AUDIT_PATH, merchant_evaluate=None, on_event=None,
-    buyer_id=None, orders=None, risk_approval_tier="standard", on_round_limit="walk_away",
+    buyer_id=None, orders=None, risk_approval_tier="standard",
+    persona=None, requested_perks=None,
 ):
     """Ties buyer-agent and merchant-agent together per
     NEGOTIATION_SPEC.md Section 3. Returns {"state": ..., "offer": ...}
@@ -112,25 +132,82 @@ def run_negotiation(
     (the actual gating decision is made later, in run_full_transaction(),
     which also receives risk_approval_tier directly for that).
 
-    `on_round_limit` (Milestone 8 frontend follow-up, default
-    "walk_away" -- every pre-existing caller behaves byte-identically):
-    decided upfront by the caller, before the negotiation starts -- not
-    a new stateful flow like the approval pause. "walk_away" (default)
-    is the original behavior, unchanged: hitting policy.max_negotiation_rounds
-    ends the negotiation REJECTED. "accept_final" instead treats the
-    merchant's own last real counter-offer (the last agent="merchant-agent"
-    "counter" entry in `history` -- a price that WAS already validated
-    against every guardrail when it was proposed, never a fabricated or
-    re-derived number) as accepted, and returns AGREEMENT_RECORDED with
-    it. Only fires for a round-cap rejection specifically -- identified by
-    "policy.max_negotiation_rounds" appearing in evidence_paths, which
-    check_guardrails() sometimes returns alongside a floor-evidence path
-    (e.g. ["policy.max_discount_pct", "policy.max_negotiation_rounds"]
-    when the final round's offer is still below the floor) and sometimes
-    alone -- membership, not exact-list equality, so both forms match.
-    An instant reject for an unrelated reason (e.g. below min_price on
-    the very first offer) never carries this evidence path and is
-    untouched by this flag."""
+    Round-limit handling (Section 2X, 2026-09-04 -- replaces the
+    Milestone 8 `on_round_limit` parameter and Section 2U's auto-accept-
+    then-forced-approval logic entirely, per the user's explicit request
+    to redesign this rather than layer another fix on it): hitting
+    policy.max_negotiation_rounds with no agreement no longer decides
+    walk-away-vs-accept upfront, and no longer auto-accepts anything.
+    Instead this function ALWAYS returns a new "ROUND_LIMIT_REACHED"
+    state -- a genuine pause, carrying the merchant's own last real
+    counter-offer (the last agent="merchant-agent" "counter" entry in
+    `history` -- a price that WAS already validated against every
+    guardrail when it was proposed, never a fabricated or re-derived
+    number) plus the exact `policy` this negotiation was running under
+    (already risk-tightened/perk-eligibility-merged, if applicable) and
+    `requested_perks`, so whoever resolves the pause (see
+    _accept_round_limit_offer()/_decline_round_limit_offer()/
+    resolve_round_limit_decision() below) can finish the decision using
+    the SAME state, never re-derived. Only fires for a round-cap
+    rejection specifically -- identified by "policy.max_negotiation_rounds"
+    appearing in evidence_paths, which check_guardrails() sometimes
+    returns alongside a floor-evidence path (e.g.
+    ["policy.max_discount_pct", "policy.max_negotiation_rounds"] when the
+    final round's offer is still below the floor) and sometimes alone --
+    membership, not exact-list equality, so both forms match. An instant
+    reject for an unrelated reason (e.g. below min_price on the very
+    first offer) never carries this evidence path and returns REJECTED
+    exactly as before. If no merchant counter-offer exists at all (the
+    round cap was hit on the buyer's very first, instantly-rejected
+    offer -- no round ever produced a counter to fall back to), this also
+    returns REJECTED -- there is nothing to offer the human a choice
+    about.
+
+    `persona`/`requested_perks` (Milestone 9, Section 4E -- multi-
+    dimensional negotiation, both optional, default None): `persona` is
+    the buyer's data/buyers.json persona label, resolved by the CALLER
+    (same "policy/identity resolved by the caller" split as buyer_id/
+    orders/risk_approval_tier above). `requested_perks` is a list of
+    perk names ("free_delivery", "extended_warranty") the buyer is
+    asking for, decided ONCE before the negotiation starts -- never
+    re-requested or changed mid-negotiation. When buyer_id/orders/persona
+    are all given and requested_perks is non-empty,
+    personalization.perk_eligibility() runs once (reusing the SAME
+    risk_level already computed above -- HIGH risk overrides perk
+    eligibility, consistent with it also zeroing the discount ceiling),
+    logged as a perk_review entry (same pattern as risk_review), and the
+    result is merged into the local `policy` copy as
+    policy["eligible_perks"] for merchant_agent.check_guardrails() to
+    consult at acceptance time. An ineligible request is conclusively
+    declined right here, with a rule-specific rationale -- no LLM
+    discretion on that boundary, ever.
+
+    `buyer_id`/`orders` guard (2026-09-05, added after a real near-miss:
+    a verification script called this function with neither argument,
+    which is valid -- see below -- but the risk-vs-floor claim it then
+    made would have been silently wrong had that buyer/qty pair actually
+    carried risk): passing exactly ONE of buyer_id/orders is ALWAYS a
+    caller mistake -- the risk-assessment block below only ever runs
+    when BOTH are given, so one alone accomplishes nothing except
+    silently skipping the Risk Agent entirely while looking like a
+    normal call. Raises ValueError immediately rather than let that
+    happen quietly. Passing NEITHER remains completely valid and
+    unchanged -- every pre-Milestone-5 caller, and every test that
+    deliberately wants "no personalization," relies on exactly that.
+    The resulting distinction already existed and is preserved: `risk_level`
+    stays Python `None` ("never assessed") when both are omitted, vs. the
+    string `"none"` ("assessed, found no risk") when both are given and
+    risk_assessment() runs -- this guard just stops a caller from landing
+    in the first state by accident while believing they're in the second."""
+    if (buyer_id is None) != (orders is None):
+        raise ValueError(
+            "run_negotiation() requires buyer_id and orders TOGETHER, or NEITHER -- "
+            f"got buyer_id={buyer_id!r}, orders={'<list of len ' + str(len(orders)) + '>' if orders is not None else None!r}. "
+            "Passing exactly one silently skips the Risk Agent check entirely (risk_level "
+            "stays None -- 'never assessed' -- not the string \"none\", which means 'assessed, "
+            "found no risk'). That's easy to mistake for a genuine no-risk result. Pass both "
+            "to run the real risk assessment for this buyer, or neither to explicitly skip it."
+        )
     merchant_evaluate = merchant_evaluate or merchant_agent.evaluate_rules
     round_num = 1
     history = []
@@ -201,6 +278,24 @@ def run_negotiation(
                 path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
             )
 
+    if buyer_id is not None and orders is not None and persona is not None and requested_perks:
+        perk_result = personalization.perk_eligibility(buyer_id, orders, persona, risk_level)
+        # Local reassignment only -- never mutates the caller's original
+        # policy dict, same discipline as apply_risk_discount_cap() above.
+        policy = {**policy, "eligible_perks": perk_result["eligible"]}
+        ineligible = [p for p in requested_perks if p not in perk_result["eligible"]]
+        perk_rationale = perk_result["rationale"]
+        if ineligible:
+            perk_rationale = (
+                f"{perk_rationale} Requested but declined as ineligible: {', '.join(ineligible)}."
+            )
+        else:
+            perk_rationale = f"{perk_rationale} Requested and eligible: {', '.join(perk_result['eligible'])}."
+        _log(
+            on_event, 0, "risk-agent", "perk_review", None, perk_rationale, [f"perk_eligibility.{perk_result['rule']}"],
+            path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+        )
+
     try:
         current_offer = buyer.initial_offer()
     except BuyerUnavailableError as exc:
@@ -223,7 +318,7 @@ def run_negotiation(
     history.append({"agent": "buyer-agent", "action": "offer", "offer": current_offer})
 
     while True:
-        result = merchant_evaluate(current_offer, policy, round_num, history)
+        result = merchant_evaluate(current_offer, policy, round_num, history, requested_perks=requested_perks)
         _log(
             on_event, round_num, "merchant-agent", result["decision"], result["offer"],
             result["rationale"], result["evidence_paths"], path=audit_path,
@@ -236,25 +331,27 @@ def run_negotiation(
             return {
                 "state": "AGREEMENT_RECORDED", "offer": result["offer"], "risk_level": risk_level,
                 "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+                "granted_perks": result.get("granted_perks", []), "declined_perks": result.get("declined_perks", []),
             }
         if result["decision"] == "reject":
-            if on_round_limit == "accept_final" and "policy.max_negotiation_rounds" in result["evidence_paths"]:
+            if "policy.max_negotiation_rounds" in result["evidence_paths"]:
                 last_merchant_counter = next(
                     (h["offer"] for h in reversed(history) if h["agent"] == "merchant-agent" and h["action"] == "counter"),
                     None,
                 )
                 if last_merchant_counter is not None:
                     _log(
-                        on_event, round_num, "buyer-agent", "accept", last_merchant_counter,
-                        "Round limit reached; buyer accepts the merchant's last counter-offer "
-                        "(on_round_limit=accept_final).",
+                        on_event, round_num, "merchant-agent", "round_limit_reached", last_merchant_counter,
+                        f"Round limit ({policy['max_negotiation_rounds']}) reached without agreement; "
+                        "pausing for the buyer/human to decide whether to accept the merchant's final offer.",
                         ["policy.max_negotiation_rounds"], path=audit_path, negotiation_id=negotiation_id,
                         product_name=product_name, list_price=list_price, merchant_id=merchant_id,
                     )
                     return {
-                        "state": "AGREEMENT_RECORDED", "offer": last_merchant_counter, "risk_level": risk_level,
+                        "state": "ROUND_LIMIT_REACHED", "offer": last_merchant_counter, "risk_level": risk_level,
                         "negotiation_id": negotiation_id, "product_name": product_name,
                         "list_price": list_price, "merchant_id": merchant_id,
+                        "policy": policy, "requested_perks": requested_perks,
                     }
             return {
                 "state": "REJECTED", "offer": None, "negotiation_id": negotiation_id,
@@ -277,13 +374,16 @@ def run_negotiation(
             negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
         if buyer_response["accept"]:
+            granted_perks, declined_perks = merchant_agent._resolve_perks(result["offer"], policy, requested_perks or [])
             _log(
-                on_event, round_num + 1, "buyer-agent", "accept", result["offer"], "", [],
+                on_event, round_num + 1, "buyer-agent", "accept", result["offer"],
+                _perk_outcome_note(granted_perks, declined_perks).strip(), [],
                 path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
             )
             return {
                 "state": "AGREEMENT_RECORDED", "offer": result["offer"], "risk_level": risk_level,
                 "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+                "granted_perks": granted_perks, "declined_perks": declined_perks,
             }
 
         current_offer = buyer_response["offer"]
@@ -293,6 +393,101 @@ def run_negotiation(
             path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
         )
         history.append({"agent": "buyer-agent", "action": "offer", "offer": current_offer})
+
+
+def _accept_round_limit_offer(round_limit_outcome, audit_path, on_event):
+    """Section 2X. Called once the human/buyer decides to accept the
+    merchant's final offer after a ROUND_LIMIT_REACHED pause -- whether
+    that decision was made synchronously (run_full_transaction()'s own
+    confirm() call) or much later, via resolve_round_limit_decision()
+    after a real pause/resume round-trip. `round_limit_outcome` is the
+    exact dict run_negotiation() returned for "ROUND_LIMIT_REACHED" (or
+    whatever subset of it the caller persisted across the pause) --
+    critically, its "policy" field is the SAME (possibly risk-tightened/
+    perk-eligibility-merged) policy the negotiation actually paused
+    under, never re-derived here.
+
+    Resolves perks against that policy (same mechanism
+    check_guardrails()'s own accept branch and the buyer-accepts-counter
+    path both use -- _resolve_perks() is the one place this decision is
+    ever made), logs the acceptance, and returns an AGREEMENT_RECORDED-
+    shaped dict ready to flow into _process_agreement() -- the exact same
+    function a normal negotiated agreement flows into, so a round-limit
+    acceptance is never exempt from any guardrail (inventory check,
+    approval gate) a genuine agreement would also have to clear."""
+    offer = round_limit_outcome["offer"]
+    policy = round_limit_outcome["policy"]
+    negotiation_id = round_limit_outcome.get("negotiation_id")
+    product_name = round_limit_outcome.get("product_name")
+    list_price = round_limit_outcome.get("list_price")
+    merchant_id = round_limit_outcome.get("merchant_id")
+    granted_perks, declined_perks = merchant_agent._resolve_perks(
+        offer, policy, round_limit_outcome.get("requested_perks") or [],
+    )
+    _log(
+        on_event, None, "buyer-agent", "accept", offer,
+        "Round limit reached; buyer accepted the merchant's last counter-offer." +
+        _perk_outcome_note(granted_perks, declined_perks),
+        ["policy.max_negotiation_rounds"], path=audit_path, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+    )
+    return {
+        "state": "AGREEMENT_RECORDED", "offer": offer, "risk_level": round_limit_outcome.get("risk_level"),
+        "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price,
+        "merchant_id": merchant_id, "granted_perks": granted_perks, "declined_perks": declined_perks,
+    }
+
+
+def _decline_round_limit_offer(round_limit_outcome, audit_path, on_event):
+    """Section 2X. The other resolution of a ROUND_LIMIT_REACHED pause --
+    the human/buyer declines the merchant's final offer. Produces the
+    same REJECTED shape a normal round-cap walk-away always has."""
+    negotiation_id = round_limit_outcome.get("negotiation_id")
+    product_name = round_limit_outcome.get("product_name")
+    list_price = round_limit_outcome.get("list_price")
+    merchant_id = round_limit_outcome.get("merchant_id")
+    _log(
+        on_event, None, "buyer-agent", "reject", None,
+        "Round limit reached; buyer declined the merchant's last counter-offer.",
+        ["policy.max_negotiation_rounds"], path=audit_path, negotiation_id=negotiation_id,
+        product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+    )
+    return {
+        "state": "REJECTED", "offer": None, "negotiation_id": negotiation_id,
+        "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+    }
+
+
+def resolve_round_limit_decision(
+    round_limit_outcome, accept, audit_path=DEFAULT_AUDIT_PATH, on_event=None, approval_confirm=None,
+    payment_client=None, force_payment_failure=False, force_insufficient_inventory=False,
+    product=None, catalog_path=None, risk_approval_tier="standard",
+):
+    """Section 2X. Resumes a paused ROUND_LIMIT_REACHED negotiation once
+    the human/buyer decides. This is the ONE function both the CLI's
+    synchronous confirm() path (inside run_full_transaction()) and the
+    API's asynchronous POST /api/round-limit-decision resume path call --
+    not two implementations of the same decision.
+
+    Declining returns REJECTED immediately (_decline_round_limit_offer()).
+
+    Accepting resolves perks and logs the acceptance
+    (_accept_round_limit_offer()), then proceeds through _process_agreement()
+    -- the EXACT SAME post-agreement logic (inventory check, approval
+    gate, payment) a normal AGREEMENT_RECORDED goes through. No shortcut:
+    if the resulting price/risk tier would normally trigger the human-
+    approval gate, it still does here -- `approval_confirm` (including
+    PAUSE_FOR_APPROVAL, for a second pause chained right after this one)
+    is passed straight through, exactly as run_full_transaction() itself
+    would use it."""
+    if not accept:
+        return _decline_round_limit_offer(round_limit_outcome, audit_path, on_event)
+    negotiation_outcome = _accept_round_limit_offer(round_limit_outcome, audit_path, on_event)
+    return _process_agreement(
+        negotiation_outcome, round_limit_outcome["policy"], audit_path, force_payment_failure,
+        force_insufficient_inventory, approval_confirm, payment_client, on_event, product, catalog_path,
+        risk_approval_tier,
+    )
 
 
 def _cli_confirm(message):
@@ -318,7 +513,7 @@ PAUSE_FOR_APPROVAL = object()
 def _attempt_payment(
     policy, offer, qty, total, audit_path, payment_client, force_payment_failure, on_event,
     product, catalog_path, is_retry=False, negotiation_id=None, product_name=None, list_price=None,
-    merchant_id=None,
+    merchant_id=None, granted_perks=None, declined_perks=None,
 ):
     """Shared by run_full_transaction() (the first, automatic attempt) and
     retry_payment() (an explicit, separate re-authorization -- Section
@@ -362,6 +557,7 @@ def _attempt_payment(
         return {
             "state": "COMPLETED", "offer": offer, "payment": result, "negotiation_id": negotiation_id,
             "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            "granted_perks": granted_perks or [], "declined_perks": declined_perks or [],
         }
 
     _log(
@@ -392,6 +588,7 @@ def _attempt_payment(
     return {
         "state": "ROLLBACK", "offer": offer, "payment": result, "reason": "payment_failure",
         "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+        "granted_perks": granted_perks or [], "declined_perks": declined_perks or [],
     }
 
 
@@ -453,7 +650,7 @@ def run_full_transaction(
     force_payment_failure=False, force_insufficient_inventory=False,
     approval_confirm=None, payment_client=None, merchant_evaluate=None, on_event=None,
     product=None, catalog_path=None, buyer_id=None, orders=None, risk_approval_tier="standard",
-    on_round_limit="walk_away",
+    persona=None, requested_perks=None,
 ):
     """Extends run_negotiation() with the payment phase per
     NEGOTIATION_SPEC.md Section 3A: AGREEMENT_RECORDED -> [inventory
@@ -490,17 +687,52 @@ def run_full_transaction(
     resolve the gate synchronously. See PAUSE_FOR_APPROVAL's own comment
     above _cli_confirm().
 
-    `on_round_limit` (Milestone 8 frontend follow-up, default
-    "walk_away"): passed straight through to run_negotiation() -- see
-    its own docstring. "accept_final" can turn what would have been a
-    round-cap REJECTED into an AGREEMENT_RECORDED, which then flows
-    through the normal inventory/approval/payment steps below exactly
-    like any other agreement -- nothing else in this function changes."""
+    Round-limit handling (Section 2X, 2026-09-04 -- replaces the
+    Milestone 8 `on_round_limit` parameter and Section 2U's forced-
+    approval logic entirely): if run_negotiation() returns
+    "ROUND_LIMIT_REACHED" instead of a normal terminal state, this
+    function pauses (if `approval_confirm is PAUSE_FOR_APPROVAL`,
+    returning a new "ROUND_LIMIT_PENDING" state -- src/api.py's own
+    resume mechanism, mirroring PENDING_APPROVAL exactly, see
+    resolve_round_limit_decision() below) or resolves it synchronously
+    via `confirm()` (the CLI path). Either way, accepting flows into
+    _process_agreement() -- the SAME function a normal AGREEMENT_RECORDED
+    uses -- so a round-limit acceptance is never exempt from the normal
+    approval gate: if the resulting price/risk tier would have triggered
+    it for a genuine agreement, it triggers it here too, no special-
+    cased forced trigger (unlike the Section 2U design this replaces)."""
     negotiation_outcome = run_negotiation(
         policy, buyer, audit_path=audit_path, merchant_evaluate=merchant_evaluate, on_event=on_event,
         buyer_id=buyer_id, orders=orders, risk_approval_tier=risk_approval_tier,
-        on_round_limit=on_round_limit,
+        persona=persona, requested_perks=requested_perks,
     )
+
+    if negotiation_outcome["state"] == "ROUND_LIMIT_REACHED":
+        if approval_confirm is PAUSE_FOR_APPROVAL:
+            return {
+                "state": "ROUND_LIMIT_PENDING", "offer": negotiation_outcome["offer"], "payment": None,
+                "negotiation_id": negotiation_outcome.get("negotiation_id"),
+                "product_name": negotiation_outcome.get("product_name"),
+                "list_price": negotiation_outcome.get("list_price"),
+                "merchant_id": negotiation_outcome.get("merchant_id"),
+                "risk_level": negotiation_outcome.get("risk_level"),
+                # Carried verbatim so the resume path (POST /api/round-limit-decision
+                # -> resolve_round_limit_decision()) never has to re-derive
+                # the exact policy/requested_perks this negotiation paused
+                # under -- same discipline as PENDING_APPROVAL's reason/
+                # evidence_paths above.
+                "policy": negotiation_outcome["policy"], "requested_perks": negotiation_outcome.get("requested_perks") or [],
+            }
+        confirm = approval_confirm or _cli_confirm
+        offer = negotiation_outcome["offer"]
+        accepted = confirm(
+            f"Round limit reached with no agreement. Accept the merchant's final offer of "
+            f"{offer['price']:.2f} {policy['currency']} for {offer['qty']}x {policy['product_name']}?"
+        )
+        if not accepted:
+            return _decline_round_limit_offer(negotiation_outcome, audit_path, on_event)
+        negotiation_outcome = _accept_round_limit_offer(negotiation_outcome, audit_path, on_event)
+
     # Milestone 7 (Section 4D): every payment-phase entry this function
     # logs below carries the SAME negotiation_id run_negotiation() just
     # generated, so a negotiation's negotiation + payment entries group
@@ -514,11 +746,45 @@ def run_full_transaction(
     product_name = negotiation_outcome.get("product_name")
     list_price = negotiation_outcome.get("list_price")
     merchant_id = negotiation_outcome.get("merchant_id")
+    # Milestone 9 (Section 4E): resolved once, inside run_negotiation(),
+    # at whichever of its three acceptance points actually fired -- carried
+    # through unchanged from here on, same treatment as negotiation_id/
+    # product_name/list_price/merchant_id above.
+    granted_perks = negotiation_outcome.get("granted_perks", [])
+    declined_perks = negotiation_outcome.get("declined_perks", [])
     if negotiation_outcome["state"] != "AGREEMENT_RECORDED":
         return {
             "state": negotiation_outcome["state"], "offer": None, "payment": None,
             "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            "granted_perks": granted_perks, "declined_perks": declined_perks,
         }
+
+    return _process_agreement(
+        negotiation_outcome, policy, audit_path, force_payment_failure, force_insufficient_inventory,
+        approval_confirm, payment_client, on_event, product, catalog_path, risk_approval_tier,
+    )
+
+
+def _process_agreement(
+    negotiation_outcome, policy, audit_path, force_payment_failure, force_insufficient_inventory,
+    approval_confirm, payment_client, on_event, product, catalog_path, risk_approval_tier,
+):
+    """Section 2X extraction: everything run_full_transaction() does once
+    it has a genuine AGREEMENT_RECORDED in hand -- inventory fulfillment
+    check, the approval gate, and payment. Previously inline in
+    run_full_transaction() itself; factored out so
+    resolve_round_limit_decision() (a round-limit acceptance arriving via
+    a LATER, separate API call) can reuse the EXACT SAME logic a normal
+    agreement flows through immediately -- one function, not two
+    implementations of "what happens after an agreement," so a round-
+    limit acceptance can never silently skip a guardrail a genuine
+    agreement would also have to clear."""
+    negotiation_id = negotiation_outcome.get("negotiation_id")
+    product_name = negotiation_outcome.get("product_name")
+    list_price = negotiation_outcome.get("list_price")
+    merchant_id = negotiation_outcome.get("merchant_id")
+    granted_perks = negotiation_outcome.get("granted_perks", [])
+    declined_perks = negotiation_outcome.get("declined_perks", [])
 
     offer = negotiation_outcome["offer"]
     qty = offer["qty"]
@@ -562,6 +828,7 @@ def run_full_transaction(
         result = {
             "state": "ROLLBACK", "offer": offer, "payment": None, "reason": "insufficient_inventory",
             "negotiation_id": negotiation_id, "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+            "granted_perks": granted_perks, "declined_perks": declined_perks,
         }
         if not real_inventory_shortfall:
             result["simulated_stock"] = simulated_stock
@@ -587,26 +854,51 @@ def run_full_transaction(
     # "standard", so gate_moderate is always False there -- behavior is
     # byte-identical to Section 2O.
     gate_moderate = risk_level == "moderate" and risk_approval_tier == "strict"
-    if total > threshold or risk_level == "high" or gate_moderate:
-        if total > threshold:
-            reason = (
-                f"Transaction total {total:.2f} exceeds policy.transaction_approval_threshold "
-                f"({threshold}); pausing for human approval."
-            )
-            evidence = ["policy.transaction_approval_threshold"]
-        elif risk_level == "high":
-            reason = (
-                "High risk flagged by the Risk Agent for this buyer/request; pausing for human "
-                "approval regardless of policy.transaction_approval_threshold."
-            )
-            evidence = ["risk_agent.risk_level"]
-        else:
-            reason = (
-                "Moderate risk flagged by the Risk Agent, and this merchant (risk_approval_tier=strict) "
-                "requires approval on MODERATE risk too; pausing for human approval regardless of "
-                "policy.transaction_approval_threshold."
-            )
-            evidence = ["risk_agent.risk_level", "merchant.risk_approval_tier"]
+    # Section 2U (2026-09-04): every independent reason approval could be
+    # required -- collected as (evidence_paths, reason_fragment) pairs
+    # rather than an if/elif/else that only ever cites the FIRST one that
+    # matched. Two or more can genuinely be true at once (e.g. a HIGH-risk
+    # negotiation that also exceeds the threshold) -- silently citing only
+    # one would misreport the audit trail. One gate, one prompt, every
+    # applicable reason named.
+    #
+    # Section 2X follow-up (2026-09-04, same day): a round-limit
+    # acceptance used to ALWAYS add itself as a forced trigger here
+    # (Section 2U). That's gone -- a round-limit acceptance is no longer
+    # special-cased at all; it's just another way an AGREEMENT_RECORDED
+    # arrived, and gets the SAME threshold/risk-only evaluation below as
+    # any negotiated agreement. See run_negotiation()'s "Round-limit
+    # handling" docstring section for why (the user's own framing: no
+    # longer an auto-accept that needs a compensating forced check, but a
+    # genuine human decision made BEFORE this point).
+    approval_triggers = []
+    if total > threshold:
+        approval_triggers.append((
+            ["policy.transaction_approval_threshold"],
+            f"transaction total {total:.2f} exceeds policy.transaction_approval_threshold ({threshold})",
+        ))
+    if risk_level == "high":
+        approval_triggers.append((
+            ["risk_agent.risk_level"],
+            "high risk flagged by the Risk Agent for this buyer/request",
+        ))
+    elif gate_moderate:
+        approval_triggers.append((
+            ["risk_agent.risk_level", "merchant.risk_approval_tier"],
+            "moderate risk flagged by the Risk Agent, and this merchant (risk_approval_tier=strict) "
+            "requires approval on moderate risk too",
+        ))
+
+    if approval_triggers:
+        evidence = []
+        for paths, _ in approval_triggers:
+            for p in paths:
+                if p not in evidence:
+                    evidence.append(p)
+        reason = (
+            "Approval required: " + " AND ".join(fragment for _, fragment in approval_triggers) +
+            "; pausing for human approval regardless of policy.transaction_approval_threshold."
+        )
         _log(
             on_event, None, "merchant-agent", "approval_requested", offer, reason, evidence,
             path=audit_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
@@ -615,14 +907,16 @@ def run_full_transaction(
             # The approval_requested entry above is already real and
             # written -- this just stops short of resolving it. Nothing
             # about WHY approval is needed gets recomputed by the caller;
-            # `reason`/`evidence` (already derived above from the exact
-            # same threshold/risk_level/gate_moderate checks) are handed
-            # back verbatim so the resume path never has to re-derive them.
+            # `reason`/`evidence` (already derived above from every
+            # applicable trigger -- threshold and/or risk) are handed
+            # back verbatim so the resume path never has to re-derive
+            # them.
             return {
                 "state": "PENDING_APPROVAL", "offer": offer, "payment": None,
                 "negotiation_id": negotiation_id, "product_name": product_name,
                 "list_price": list_price, "merchant_id": merchant_id, "risk_level": risk_level,
                 "reason": reason, "evidence_paths": evidence, "total": total, "qty": qty,
+                "granted_perks": granted_perks, "declined_perks": declined_perks,
             }
         confirm = approval_confirm or _cli_confirm
         approved = confirm(
@@ -638,6 +932,7 @@ def run_full_transaction(
             return {
                 "state": "APPROVAL_DECLINED", "offer": offer, "payment": None, "negotiation_id": negotiation_id,
                 "product_name": product_name, "list_price": list_price, "merchant_id": merchant_id,
+                "granted_perks": granted_perks, "declined_perks": declined_perks,
             }
         _log(
             on_event, None, "merchant-agent", "approval_granted", offer,
@@ -649,6 +944,7 @@ def run_full_transaction(
     return _attempt_payment(
         policy, offer, qty, total, audit_path, payment_client, force_payment_failure, on_event,
         product, catalog_path, negotiation_id=negotiation_id, product_name=product_name, list_price=list_price, merchant_id=merchant_id,
+        granted_perks=granted_perks, declined_perks=declined_perks,
     )
 
 
@@ -932,8 +1228,18 @@ if __name__ == "__main__":
     persona_from_profile = (
         personalization.buyer_to_persona(buyer_profile, policy["product_name"]) if buyer_profile else None
     )
-    if persona_from_profile is not None and buyer_budget is not None:
-        persona_from_profile["budget"] = buyer_budget
+    if persona_from_profile is not None:
+        # Section 2AG (2026-09-05): BUYER_ID alone (no BUYER_BUDGET) no
+        # longer reads a stored budget_range -- it derives the ceiling as
+        # a persona-appropriate discount off THIS policy's real
+        # list_price, same mechanism (and same PERSONA_DISCOUNT_BANDS
+        # table) as generate_negotiation_history.py. Not seeded: this is
+        # an interactive CLI demo invocation, not the deterministic batch
+        # generator, so a fresh persona-band draw each run is fine.
+        persona_from_profile["budget"] = (
+            buyer_budget if buyer_budget is not None
+            else personalization.budget_from_list_price(buyer_profile["persona"], policy["list_price"], random)
+        )
 
     if buyer_mode == "ai":
         persona = persona_from_profile or {
@@ -947,14 +1253,14 @@ if __name__ == "__main__":
         )
         budget_source = (
             "from BUYER_BUDGET" if buyer_budget is not None
-            else "from BUYER_ID profile" if persona_from_profile is not None
+            else "from BUYER_ID profile's persona band" if persona_from_profile is not None
             else "hardcoded default (BUYER_BUDGET/BUYER_ID not set)"
         )
         print(f"Effective buyer persona ({budget_source}): {json.dumps(persona, indent=2)}")
     else:
         if persona_from_profile is not None:
             max_acceptable_price = persona_from_profile["budget"]
-            budget_source = "from BUYER_BUDGET" if buyer_budget is not None else "from BUYER_ID profile"
+            budget_source = "from BUYER_BUDGET" if buyer_budget is not None else "from BUYER_ID profile's persona band"
         else:
             max_acceptable_price = buyer_budget if buyer_budget is not None else 4450.0
             budget_source = "from BUYER_BUDGET" if buyer_budget is not None else "hardcoded default (BUYER_BUDGET/BUYER_ID not set)"

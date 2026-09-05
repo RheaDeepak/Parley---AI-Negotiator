@@ -124,16 +124,23 @@ def test_guardrail_clamp_when_proposal_violates_max_discount_pct(tmp_path):
     assert result["offer"]["price"] == 4399.12
     assert result["guardrail_clamped"] is True
     assert "policy.max_discount_pct" in result["evidence_paths"]
-    assert "4000" not in json.dumps(result)
+    # Layer 2's invalid proposal (price=4000.0) must never leak through --
+    # checked against the SPECIFIC fields that would indicate a leak, not
+    # a raw text/JSON dump: dumping the whole result also stringifies
+    # decision_id-shaped random hex elsewhere in this file, which can
+    # coincidentally contain any digit substring by design (a real,
+    # if rare, false-positive risk -- see the negotiation_id/decision_id
+    # hardening in test_ai_merchant_agent.py's liquidation test).
+    assert result["offer"]["price"] != 4000.0
+    assert "4000" not in result["rationale"]
 
     from src.agents.audit_logger import log_entry
-    log_entry(
+    logged = log_entry(
         "merchant-agent", result["decision"], result["offer"], result["rationale"],
         result["evidence_paths"], path=str(audit_path), guardrail_clamped=result["guardrail_clamped"],
     )
-    raw_log = audit_path.read_text(encoding="utf-8")
-    assert "4000" not in raw_log
-    assert "4000.0" not in raw_log
+    assert logged["offer"]["price"] != 4000.0
+    assert "4000" not in logged["rationale"]
 
 
 def test_evidence_label_states_the_live_discount_percentage_inline(tmp_path):
@@ -519,16 +526,23 @@ def test_valid_in_bounds_proposal_passes_through_unclamped():
 def test_round_cap_enforcement_still_works_with_ai_merchant(tmp_path):
     audit_path = tmp_path / "negotiation.log"
     # Merchant AI always proposes a valid, unclamped counter at the floor;
-    # buyer's ceiling never reaches it, so round-limit must force REJECT
-    # regardless of what Layer 2 keeps proposing.
+    # buyer's ceiling never reaches it, so the round cap is reached.
+    # Section 2X: this pauses as ROUND_LIMIT_REACHED (not an outright
+    # REJECTED) regardless of what Layer 2 keeps proposing -- carrying
+    # the merchant's own last counter (4399.12, the exact floor) as the
+    # offer a human/buyer can choose to accept.
     merchant_evaluate = partial(evaluate_ai, llm_call=RepeatingMerchantLLM(_merchant_decision("counter", price=4399.12, qty=1)))
     buyer = BuyerAgent(qty=1, opening_discount_pct=15, max_acceptable_price=4000.0, list_price=POLICY["list_price"])
 
     outcome = run_negotiation(POLICY, buyer, audit_path=str(audit_path), merchant_evaluate=merchant_evaluate)
 
-    assert outcome["state"] == "REJECTED"
+    assert outcome["state"] == "ROUND_LIMIT_REACHED"
+    assert outcome["offer"]["price"] == 4399.12  # the merchant's own last real counter, unchanged
     entries = _read_log(audit_path)
-    merchant_entries = [e for e in entries if e["agent"] == "merchant-agent"]
+    # Per-round guardrail decisions only -- excludes the "round_limit_reached"
+    # pause marker itself (also agent="merchant-agent", but not a round
+    # decision; see run_negotiation()'s Section 2X handling).
+    merchant_entries = [e for e in entries if e["agent"] == "merchant-agent" and e["action"] in ("accept", "reject", "counter")]
     assert len(merchant_entries) == POLICY["max_negotiation_rounds"]
     assert merchant_entries[-1]["action"] == "reject"
     # The final round overrides Layer 2's "counter" -> that's a clamp;

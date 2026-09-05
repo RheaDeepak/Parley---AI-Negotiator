@@ -19,9 +19,16 @@ DEFAULT_MERCHANTS_PATH = "data/merchants.json"
 # scripts/generate_synthetic_data.py so the generator and the runtime
 # can never drift apart (same discipline as CATEGORY_LIQUIDATION_THRESHOLDS
 # below). Whole-category split, confirmed with the user before generating
-# anything: MERCH-001 (Voltstream Electronics, risk_approval_tier=strict)
+# anything: MERCH-001 (Voltstream Marketplace, risk_approval_tier=strict)
 # gets the tech/gear-adjacent categories; MERCH-002 (Hearth & Home Living,
 # risk_approval_tier=standard) gets the home/lifestyle categories.
+# 2026-09-05 (Section 2AA): renamed from "Voltstream Electronics" -- that
+# name overpromised a single category while CATEGORY_TO_MERCHANT (below)
+# always assigned it 4 (Electronics, Office & Stationery, Toys & Games,
+# Sporting Goods & Outdoors), which reads as a real bug from the
+# frontend (a buyer picks "Voltstream Electronics" and sees a Yoga Mat).
+# Confirmed with the user: rename to accurately reflect the real
+# multi-category assignment, not restructure the assignment itself.
 CATEGORY_TO_MERCHANT = {
     "Electronics": "MERCH-001",
     "Office & Stationery": "MERCH-001",
@@ -39,11 +46,24 @@ HARD_DISCOUNT_CEILING_PCT = 30
 
 # (ltv_min_inclusive, ltv_max_exclusive, bonus_pct) -- confirmed with the
 # user as the "finer-grained, 4 tiers" option.
+#
+# 2026-09-05 (Section 2Y): the top tier was originally open-ended
+# (50000, inf, 8) -- confirmed with the user this made two demo
+# personas indistinguishable: Premium Customer (BUYER-004, real LTV
+# 66469.53) and Bulk Buyer (BUYER-003, real LTV 103672.43) both landed
+# in the same tier and got the identical 8% bonus despite a ~37k real
+# LTV gap. Split at 100000 (clean gap between BUYER-013's 95906.98,
+# which stays at 8%, and BUYER-003's 103672.43, which now gets the new
+# top tier) -- Premium Customer's own bonus is UNCHANGED (still 8%);
+# only buyers with real LTV >= 100000 (BUYER-003/008/009/016) move to
+# the new 12% tier. Confirmed with the user before implementing, same
+# discipline as every other threshold in this module.
 LTV_DISCOUNT_TIERS = (
     (0, 5000, 0),
     (5000, 20000, 2),
     (20000, 50000, 5),
-    (50000, float("inf"), 8),
+    (50000, 100000, 8),
+    (100000, float("inf"), 12),
 )
 
 # Risk Agent (Milestone 5, 2026-09-02): deterministic, code-only -- no
@@ -88,25 +108,36 @@ RISK_LARGE_QTY_FALLBACK_THRESHOLD = 10  # only used if policy.qty_breaks is empt
 # Three-level gradient (2026-09-03 follow-up, confirmed with the user --
 # same discipline as every other threshold in this module): both
 # RISK_MODERATE_DISCOUNT_FACTOR and RISK_HIGH_DISCOUNT_FACTOR are
-# multiplicative factors (0.0-1.0) applied to BOTH max_discount_pct AND
-# every qty_breaks tier's discount_pct together, in the same function
-# (apply_risk_discount_cap() below) -- learned from the earlier bug
-# (Section 2P/2Q) where only max_discount_pct was zeroed and qty_breaks
-# was left untouched, silently overriding the intended floor. 1.0 would
-# mean "no change" (NONE risk skips this entirely instead, via a None
-# factor -- see risk_assessment()); 0.25 keeps a quarter of the normal
-# discount room; 0.0 (HIGH, unchanged value, same effect as the old
+# multiplicative factors (0.0-1.0) applied to max_discount_pct, in
+# apply_risk_discount_cap() below. 1.0 would mean "no change" (NONE risk
+# skips this entirely instead, via a None factor -- see
+# risk_assessment()); 0.25 keeps a quarter of the normal discount room;
+# 0.0 (HIGH, unchanged value, same effect as the old
 # RISK_HIGH_DISCOUNT_OVERRIDE_PCT=0) removes it completely.
+#
+# Whether qty_breaks tiers ALSO get scaled by this same factor depends on
+# the level (Section 2W, 2026-09-04): HIGH does (learned from Section
+# 2P/2Q -- scaling max_discount_pct alone was silently overridden by a
+# matching qty_breaks tier); MODERATE does NOT (Section 2W correction --
+# scaling MODERATE's qty_breaks made an ordinary bulk order from a
+# REPEAT buyer worse off than a smaller order, the opposite of what a
+# bulk discount is for). See apply_risk_discount_cap()'s own docstring
+# for the full live-reproduced numbers on both sides of this.
 RISK_MODERATE_DISCOUNT_FACTOR = 0.25
 RISK_HIGH_DISCOUNT_FACTOR = 0.0
 
 
-# The ultimate, non-negotiable price floor: cost + a 2% minimum margin --
-# confirmed with the user (their own example). Takes priority over
-# min_price, max_discount_pct, and the LTV bonus combined; nothing --
-# loyalty, liquidation relaxation, or discount stacking -- can push the
-# effective price below this.
-COST_MARGIN_MULTIPLIER = 1.02
+# Milestone 9 (Section 4E) removed the separate COST_MARGIN_MULTIPLIER
+# (1.02) that used to live here: it duplicated, with a DIFFERENT number,
+# the margin the synthetic-data generator already bakes into every
+# product's min_price (cost * 1.15 -- scripts/generate_synthetic_data.py).
+# Confirmed with the user: exactly one place computes the cost-derived
+# floor (the generator, at data-creation time); product_to_policy() now
+# trusts product["min_price"] as-is rather than re-deriving and
+# re-clamping it against a second, conflicting margin formula. This
+# removes a defensive clamp against a malformed catalog entry (raw
+# min_price set unsafely low relative to cost) -- an accepted tradeoff,
+# not an oversight; see NEGOTIATION_SPEC.md Section 4E.
 
 # Liquidation: the discount-cap floor (the price max_discount_pct/
 # qty_breaks would otherwise permit) starts relaxing toward min_price --
@@ -289,37 +320,154 @@ def risk_assessment(buyer_id, qty, qty_breaks, orders):
 
 def apply_risk_discount_cap(policy, risk):
     """Returns a NEW policy dict (does not mutate `policy`) with
-    max_discount_pct AND every qty_breaks tier's discount_pct scaled by
-    risk["discount_factor"] -- a no-op (returns a copy of `policy`
-    unchanged) when that key is None ("none" risk -- full normal discount
-    room). The SAME factor is applied to both fields, in this one
-    function, for every non-None risk level ("moderate" at
-    RISK_MODERATE_DISCOUNT_FACTOR, "high" at RISK_HIGH_DISCOUNT_FACTOR).
+    max_discount_pct scaled by risk["discount_factor"] -- a no-op
+    (returns a copy of `policy` unchanged) when that key is None ("none"
+    risk -- full normal discount room).
 
-    BOTH fields need scaling together, not just max_discount_pct:
+    Whether qty_breaks tiers ALSO get scaled depends on the level
+    (Section 2W, 2026-09-04 follow-up -- see below): only "high" does;
+    "moderate" leaves qty_breaks untouched, scaling max_discount_pct
+    alone.
+
+    BOTH fields need scaling together for HIGH specifically:
     merchant_agent._applicable_tier() always prefers a matching
     qty_breaks tier's discount_pct over max_discount_pct (Section 2 --
     qty_breaks tiers OVERRIDE the base rate, they don't stack with it).
-    Since "large_request" (one of the two factors "high" requires) is
-    defined as qty at or above the product's own lowest qty_breaks tier,
-    any qty that triggers "high" (and often "moderate", if a request
-    happens to be large without also being new-buyer-driven) will match
-    at least that tier -- so scaling max_discount_pct alone would be
-    silently overridden by the very qty_breaks tier the request
-    qualifies for, defeating the whole point of this function (the exact
-    bug found and fixed in Section 2P/2Q for the "high" case; this
-    function's single-factor-for-both-fields design is what prevents it
-    from recurring for "moderate" too)."""
+    "large_request" (one of the two factors "high" requires) is defined
+    as qty at or above the product's own lowest qty_breaks tier, so any
+    qty that triggers "high" will match at least that tier -- scaling
+    max_discount_pct alone would be silently overridden by the very
+    qty_breaks tier the request qualifies for, defeating the whole point
+    of this function for HIGH (the exact bug found and fixed in Section
+    2P/2Q).
+
+    Section 2W correction (2026-09-04, same day as Section 2T/2V, live-
+    reproduced): the original fix scaled qty_breaks for MODERATE too
+    (same factor, same field, "for every non-None risk level"). That's
+    the wrong call for MODERATE -- unlike HIGH ("new buyer" AND "large
+    request" together, the actual fraud-shaped combination 2P/2Q existed
+    to catch), MODERATE can fire from "large_request" ALONE, on an
+    ordinary REPEAT buyer simply placing a bulk order -- not a
+    circumvention attempt. Scaling an 18%-off qty_breaks tier down to
+    4.5% (0.25 factor) is very often a WORSE (higher) floor than the
+    unscaled max_discount_pct (e.g. 12%) that applied to a SMALLER qty
+    one unit below the same tier's threshold -- so crossing into "bulk"
+    territory made the price go UP, the opposite of what a bulk discount
+    is for. Live-reproduced: SKU-ELEC-001, a repeat buyer (4 prior
+    orders, so risk is "none" and qty_breaks is untouched below the
+    threshold): qty=9 -> floor 8694.28 (12% off, unscaled); qty=10 ->
+    floor 9435.27 (moderate risk from large_request alone; the 18% tier
+    scaled to 4.5%) -- a ~740 INR INCREASE for ordering more. Fixed: only
+    HIGH still scales qty_breaks; MODERATE now scales max_discount_pct
+    only, so a qty_breaks tier -- once it applies -- is never worse than
+    what an unrestricted policy would have given, preserving bulk-order
+    monotonicity for the common case while HIGH's genuine new+large
+    fraud signal still fully suppresses the bulk tier as before.
+
+    `risk_level` (Section 2T, 2026-09-04; corrected same day, Section 2V
+    follow-up): set to risk["level"] ("moderate" or "high" -- never for
+    "none", which returns early above and never sets it).
+    merchant_agent._floor_price() reads this to decide whether to treat
+    the risk-scaled discount-cap floor as ITS OWN floor candidate,
+    captured before liquidation relaxation ever touches `computed` --
+    otherwise liquidation (which relaxes toward min_price with no
+    awareness that `computed` might already be an artificially-tightened
+    risk ceiling, not the normal unrestricted floor) can erode a risk
+    restriction most or all of the way back to min_price on any product
+    that happens to also be liquidation-eligible, silently undoing
+    exactly the protection this function exists to provide.
+
+    Section 2V correction (same day): the field was originally a bare
+    `risk_discount_capped` boolean, True for BOTH "moderate" and "high" --
+    _floor_price() used that boolean directly, which meant MODERATE also
+    got the pre-liquidation-snapshot treatment and, exactly like the
+    original HIGH-only bug this was meant to fix, ended up suppressing
+    liquidation's relaxation entirely instead of stacking on top of it.
+    Only HIGH risk (list_price, 0% discount) was ever meant to override
+    liquidation outright; MODERATE's 25%-of-normal ceiling is a starting
+    POINT for liquidation to relax from, same as an unrestricted "none"
+    policy, not a separate floor candidate of its own. Storing the actual
+    level (not a collapsed boolean) lets _floor_price() make that HIGH-
+    vs-everything-else distinction directly instead of re-deriving it.
+    See NEGOTIATION_SPEC.md Section 2T for the original live-reproduced
+    bug (a HIGH-risk buyer landed at min_price instead of list_price on a
+    fully-liquidation-ramped product) and Section 2V for this follow-up."""
     factor = risk.get("discount_factor")
     if factor is None:
         return dict(policy)
+    level = risk.get("level")
     effective = dict(policy)
     effective["max_discount_pct"] = policy["max_discount_pct"] * factor
-    effective["qty_breaks"] = [
-        {**tier, "discount_pct": tier["discount_pct"] * factor}
-        for tier in policy.get("qty_breaks", [])
-    ]
+    # Section 2W: only HIGH scales qty_breaks tiers too -- see the
+    # docstring above for why MODERATE leaving them untouched is the fix,
+    # not a regression of the Section 2P/2Q anti-circumvention scaling.
+    if level == "high":
+        effective["qty_breaks"] = [
+            {**tier, "discount_pct": tier["discount_pct"] * factor}
+            for tier in policy.get("qty_breaks", [])
+        ]
+    effective["risk_level"] = level
     return effective
+
+
+# Milestone 9 (Section 4E, multi-dimensional negotiation): the perk name a
+# buyer requests -> the policy field naming what it costs the merchant.
+# Single source of truth for this mapping -- merchant_agent.py imports it
+# rather than re-listing the two perk names anywhere else.
+PERK_COST_FIELDS = {
+    "free_delivery": "shipping_cost",
+    "extended_warranty": "warranty_cost",
+}
+
+
+def perk_eligibility(buyer_id, orders, persona, risk_level):
+    """Milestone 9 (Section 4E). Deterministic, no LLM -- same pattern as
+    risk_assessment(): a pure function over already-known facts, called
+    ONCE per negotiation before any offer exists. Precedence (checked in
+    this order, each overriding what follows):
+      1. risk_level == "high" -> no perks at all, consistent with the
+         discount ceiling also being zeroed for HIGH risk.
+      2. persona == "Window Shopper" -> no perks at all, regardless of
+         order history.
+      3. 0 prior orders -> eligible for free_delivery only.
+      4. >0 prior orders (any other persona) -> eligible for
+         extended_warranty only.
+    A buyer is eligible for AT MOST one perk by construction (rules 3/4
+    are mutually exclusive on order count) -- never both at once.
+
+    Deliberately NOT the same order-count threshold as the Risk Agent's
+    "new buyer" factor (RISK_NEW_BUYER_MAX_PRIOR_ORDERS, currently 2) --
+    a different question (has this buyer ever ordered here at all, vs.
+    risk of abusive lowballing), confirmed with the user as an
+    intentional distinction, not a mismatch to align.
+
+    Returns {"eligible": [...], "rule": str, "rationale": str} -- same
+    shape/spirit as risk_assessment()'s return, for the perk_review audit
+    entry to log directly."""
+    prior_orders = count_prior_orders(buyer_id, orders)
+
+    if risk_level == "high":
+        return {
+            "eligible": [], "rule": "risk_override",
+            "rationale": (
+                f"High risk flagged by the Risk Agent for buyer_id={buyer_id}; no perks are "
+                "offered, consistent with the discount ceiling also being zeroed at this risk level."
+            ),
+        }
+    if persona == "Window Shopper":
+        return {
+            "eligible": [], "rule": "window_shopper",
+            "rationale": f"buyer_id={buyer_id}'s persona is Window Shopper; no perks are ever offered to this persona, regardless of order history.",
+        }
+    if prior_orders == 0:
+        return {
+            "eligible": ["free_delivery"], "rule": "new_buyer",
+            "rationale": f"buyer_id={buyer_id} has {prior_orders} prior orders (a new buyer) -- eligible for free_delivery only.",
+        }
+    return {
+        "eligible": ["extended_warranty"], "rule": "established_buyer",
+        "rationale": f"buyer_id={buyer_id} has {prior_orders} prior order(s) and persona={persona!r} -- eligible for extended_warranty only.",
+    }
 
 
 def apply_ltv_bonus(policy, ltv_bonus_pct, hard_ceiling_pct=HARD_DISCOUNT_CEILING_PCT):
@@ -338,14 +486,6 @@ def apply_ltv_bonus(policy, ltv_bonus_pct, hard_ceiling_pct=HARD_DISCOUNT_CEILIN
         for tier in policy.get("qty_breaks", [])
     ]
     return effective
-
-
-def cost_floor_price(product):
-    """The ultimate, non-negotiable price floor for this product --
-    cost + minimum margin. Pure function, no LLM. Nothing computed from
-    min_price, max_discount_pct, the LTV bonus, or liquidation relaxation
-    may ever go below this."""
-    return round(product["cost"] * COST_MARGIN_MULTIPLIER, 2)
 
 
 def liquidation_relaxation_fraction(product):
@@ -399,20 +539,23 @@ def product_to_policy(product, max_negotiation_rounds, transaction_approval_thre
     data/catalog.json product entry. `cost`, `current_inventory`, and
     `days_in_inventory` are catalog-only fields, deliberately not part of
     the negotiation policy schema -- callers needing them (the inventory
-    fulfillment check; this function itself, for min_price) read the
-    original catalog product dict directly.
+    fulfillment check) read the original catalog product dict directly.
 
-    `min_price` here is the FINAL, already-protected value -- clamped to
-    never go below cost_floor_price(), but (2026-09-02 structural fix,
-    Section 2J) otherwise UNTOUCHED by liquidation: min_price is already
-    close to the absolute floor and rarely the operative constraint, so
-    relaxing it directly had no real effect for the vast majority of
-    generated products (see the module-level comment above
-    CATEGORY_LIQUIDATION_THRESHOLDS). `liquidation_relaxation_fraction`
-    (new field, same fix) carries how far into its ramp this product is
-    (0.0 if fresh); merchant_agent._floor_price() uses it to relax the
-    qty-dependent discount-cap floor itself, toward this min_price, which
-    is where liquidation actually needs to act to have any real effect.
+    `min_price` here is `product["min_price"]` passed through AS-IS
+    (Milestone 9 / Section 4E: no longer re-clamped against a second,
+    separately-computed cost floor -- see the removed COST_MARGIN_MULTIPLIER
+    comment above). `liquidation_relaxation_fraction` carries how far into
+    its ramp this product is (0.0 if fresh); merchant_agent._floor_price()
+    uses it to relax the qty-dependent discount-cap floor itself, toward
+    this min_price, which is where liquidation actually needs to act to
+    have any real effect.
+
+    `shipping_cost`/`warranty_cost` (Milestone 9, Section 4E): what each
+    perk actually costs the merchant to provide, passed straight through
+    from the catalog product. merchant_agent._floor_price()'s
+    granted_perk_cost parameter adds whichever of these apply on top of
+    min_price -- the same floor calculation everything else already goes
+    through, not a second check.
 
     `min_price_is_liquidation_relaxed` (Section 2F/2I, kept unchanged by
     this fix): True iff liquidation is active for this product
@@ -432,7 +575,6 @@ def product_to_policy(product, max_negotiation_rounds, transaction_approval_thre
     the caller resolves it" pattern already used for buyer_id (Section 2D)
     -- negotiation_loop.py resolves the actual merchant profile/
     risk_approval_tier separately, from data/merchants.json."""
-    final_min_price = max(cost_floor_price(product), product["min_price"])
     threshold = liquidation_threshold_for(product.get("category"))
     is_liquidation_relaxed = product.get("days_in_inventory", 0) > threshold
     return {
@@ -441,7 +583,7 @@ def product_to_policy(product, max_negotiation_rounds, transaction_approval_thre
         "currency": product["currency"],
         "merchant_id": product.get("merchant_id"),
         "list_price": product["list_price"],
-        "min_price": final_min_price,
+        "min_price": product["min_price"],
         "min_price_is_liquidation_relaxed": is_liquidation_relaxed,
         "liquidation_relaxation_fraction": liquidation_relaxation_fraction(product),
         "max_discount_pct": product["max_discount_pct"],
@@ -449,17 +591,92 @@ def product_to_policy(product, max_negotiation_rounds, transaction_approval_thre
         "max_negotiation_rounds": max_negotiation_rounds,
         "transaction_approval_threshold": transaction_approval_threshold,
         "inventory_floor": product["inventory_floor"],
+        "shipping_cost": product.get("shipping_cost"),
+        "warranty_cost": product.get("warranty_cost"),
     }
 
 
+# 2026-09-05 (Section 2AG): replaces a fixed absolute budget_range as the
+# source of a buyer's spending ceiling. A stored {min, max} in rupees has
+# no relationship to whichever product/qty a negotiation actually
+# involves -- generate_negotiation_history.py draws both independently
+# (rng.choice(catalog), rng.choice(buyers)), so a cheap-persona buyer can
+# land on an expensive product and instant-reject every single time, or a
+# big-spender persona can land on a cheap product and never have its
+# budget bind at all. Expressing the ceiling as a discount-off-list-price
+# BAND instead scales with whatever product gets drawn: max_acceptable_price
+# = list_price * (1 - uniform(low, high)/100).
+#
+# Keyed by the buyer's `persona` label (the real, LTV-grounded field --
+# see Section 2Y), not `negotiation_style` free text, because
+# negotiation_style still carries stale, inconsistent wording for most
+# non-curated buyers (Section 2AD: 27/30 buyers' style text was never
+# reassigned when persona was relabeled) -- persona is the one field
+# guaranteed consistent across all 30 buyers.json entries this table needs
+# to cover. Confirmed with the user before implementing: Premium Customer
+# and First Time Customer/Bargain Hunter/Stubborn Negotiator/Loyal
+# Regular/Bulk Buyer/Window Shopper bands come from the user's explicit
+# per-persona directional requirements (Section 2AF's negotiation_style/
+# budget_range rewrite); Whale and Occasional Buyer (not part of that
+# rewrite, but real labels generate_negotiation_history.py's rng.choice
+# over all 30 buyers can still draw) were proposed and confirmed
+# separately, same session.
+PERSONA_DISCOUNT_BANDS = {
+    "Premium Customer": (0, 8),
+    "First Time Customer": (5, 15),
+    "Whale": (5, 15),
+    "Loyal Regular": (10, 18),
+    "Bulk Buyer": (12, 24),
+    "Stubborn Negotiator": (12, 22),
+    "Occasional Buyer": (15, 25),
+    "Bargain Hunter": (18, 30),
+    "Window Shopper": (25, 40),
+}
+# Fallback for any persona label not in the table above (defensive only --
+# every label currently in data/buyers.json is covered; this exists so a
+# future/unrecognized persona degrades to a reasonable middle band instead
+# of a KeyError).
+DEFAULT_PERSONA_DISCOUNT_BAND = (15, 25)
+
+
+def persona_discount_band(persona):
+    """Deterministic persona label -> (low_pct, high_pct) lookup, no LLM.
+    See PERSONA_DISCOUNT_BANDS above for the rationale."""
+    return PERSONA_DISCOUNT_BANDS.get(persona, DEFAULT_PERSONA_DISCOUNT_BAND)
+
+
+def budget_from_list_price(persona, list_price, rng):
+    """A buyer's max_acceptable_price (per-unit ceiling), derived as a
+    persona-appropriate discount off this specific product's list_price --
+    see PERSONA_DISCOUNT_BANDS above. Replaces reading a fixed
+    budget_range from data/buyers.json (Section 2AG): scales with
+    whichever product is actually being negotiated over, rather than an
+    absolute rupee figure with no relation to it. `rng` is an explicit
+    random.Random instance so callers stay deterministic under a fixed
+    seed, same discipline as every other randomized draw in
+    generate_negotiation_history.py."""
+    low_pct, high_pct = persona_discount_band(persona)
+    discount_pct = rng.uniform(low_pct, high_pct)
+    return round(list_price * (1 - discount_pct / 100), 2)
+
+
 def buyer_to_persona(buyer, product_name):
-    """Builds the {budget, target_product, willingness_to_negotiate}
-    shape AIBuyerAgent already expects from a data/buyers.json profile.
-    budget is the midpoint of the buyer's budget_range, for a concrete,
-    deterministic single value."""
-    budget_range = buyer["budget_range"]
+    """Builds the {target_product, willingness_to_negotiate} shape
+    AIBuyerAgent already expects from a data/buyers.json profile.
+
+    2026-09-05 (Section 2AG, step 2 of 3): no longer reads budget_range,
+    and "budget" is omitted from the returned dict entirely -- every real
+    caller now supplies its own: src/api.py overwrites persona["budget"]
+    with the human-typed Maximum Budget right after calling this function
+    (interactive frontend, both AI and scripted paths), and
+    src/negotiation_loop.py's BUYER_ID CLI fallback now derives it via
+    budget_from_list_price() against PERSONA_DISCOUNT_BANDS above, the
+    same mechanism generate_negotiation_history.py uses (step 1). A
+    caller that forgets to set "budget" gets an immediate KeyError from
+    AIBuyerAgent/BuyerAgent construction (loud) rather than a silent
+    stale-field read -- same "loud, not silent" principle as the guard
+    added in Section 2AE."""
     return {
-        "budget": round((budget_range["min"] + budget_range["max"]) / 2, 2),
         "target_product": product_name,
         "willingness_to_negotiate": buyer["negotiation_style"],
     }

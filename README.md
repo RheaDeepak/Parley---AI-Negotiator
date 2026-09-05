@@ -61,7 +61,7 @@ relaxation for aged stock -- both computed in code, never left to the LLM.
 
 **Multi-merchant support (`data/merchants.json`):** two merchant
 profiles, each tagged onto a whole slice of the catalog by category
-(`Voltstream Electronics`, tech/gear-adjacent categories; `Hearth & Home
+(`Voltstream Marketplace`, tech/gear-adjacent categories; `Hearth & Home
 Living`, home/lifestyle categories). What actually varies between them
 today is one behavioral field, `risk_approval_tier`: `"standard"` (only
 HIGH risk forces human approval, the Section 2O default) or `"strict"`

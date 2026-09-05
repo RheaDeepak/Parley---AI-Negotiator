@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from src.agents.llm_utils import LLMUnavailableError, TransientLLMError, call_llm_with_retry
 from src.agents.offer_utils import new_offer
+from src.personalization import PERK_COST_FIELDS
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
@@ -24,8 +25,17 @@ def _applicable_tier(policy, qty):
     return best["discount_pct"], f"policy.qty_breaks[{best_idx}].discount_pct"
 
 
-def _floor_price(policy, qty):
+def _floor_price(policy, qty, granted_perk_cost=0):
     """Cheapest price policy allows for this qty. Returns (price, evidence_path).
+
+    `granted_perk_cost` (Milestone 9, Section 4E, default 0 -- every
+    pre-existing caller unaffected): the combined cost of whatever perks
+    are being considered for grant. Folded into the SAME max()-based
+    floor everything else already goes through -- not a second, separate
+    check -- so a granted perk's cost reduces the effective margin
+    available for price discount exactly like liquidation/min_price/
+    max_discount_pct already do. See _resolve_perks() below for how this
+    gets computed and checked at acceptance time.
 
     Liquidation (2026-09-02 structural fix, Section 2J): `computed` (the
     discount-cap floor) is relaxed toward policy["min_price"] by whatever
@@ -54,15 +64,119 @@ def _floor_price(policy, qty):
     naturally flips from the discount-tier evidence to "policy.min_price"
     right at that point -- this logic is unchanged by the 2026-09-02 fix;
     it just now also applies to liquidation-relaxed computed values, not
-    only the raw discount-tier ones."""
+    only the raw discount-tier ones.
+
+    Risk ceiling (Section 2T, 2026-09-04 bug fix, confirmed live-
+    reproduced; corrected same day, Section 2V follow-up -- also
+    confirmed live-reproduced): `policy["risk_level"] == "high"` means
+    `computed` above was derived from a RISK-TIGHTENED max_discount_pct/
+    qty_breaks with NO room at all (0% allowed, exactly list_price).
+    Liquidation relaxation has no awareness of that; left alone, it
+    interpolates this risk-tightened `computed` toward min_price exactly
+    as if it were the normal floor, silently eroding the risk restriction
+    entirely on any product that also happens to be liquidation-eligible
+    (live-reproduced: SKU-ELEC-003, HIGH risk, fully liquidation-ramped --
+    floor collapsed to min_price 5093.53 instead of list_price 7976.05, a
+    ~2882 INR discount the Risk Agent's own card said was 0%). The fix:
+    capture `computed` as a THIRD floor candidate BEFORE liquidation
+    touches it, ONLY when risk_level is specifically "high", and take the
+    max() of all three (min_price(+perk_cost), the liquidation-relaxed
+    discount-cap floor, and the pre-liquidation risk ceiling) -- the same
+    "combine via max(), never a second separate check" principle every
+    other guardrail here already follows, just with a third term added.
+
+    Section 2V correction (same day): the original fix checked
+    `policy.get("risk_discount_capped", False)`, a boolean personalization.
+    apply_risk_discount_cap() set True for BOTH "moderate" and "high" --
+    so MODERATE also got the pre-liquidation-snapshot candidate, and
+    since that candidate (MODERATE's 25%-of-normal ceiling, computed
+    BEFORE liquidation) is always >= the liquidation-relaxed value,
+    max() picked it every time, suppressing liquidation for MODERATE
+    exactly like the original bug did for HIGH -- live-reproduced on the
+    same SKU-ELEC-003: MODERATE risk (new-buyer only, no large_request)
+    computed an effective floor of ~7756.71, essentially list_price, with
+    liquidation's relaxation invisible despite days_in_inventory=379.
+    Only HIGH was ever meant to override liquidation outright; MODERATE's
+    ceiling is meant to be a tighter STARTING POINT for liquidation to
+    relax from, same mechanism as an unrestricted policy, not a floor
+    candidate of its own. Checking risk_level == "high" specifically
+    (rather than "is risk active at all") fixes this: MODERATE and "none"
+    both skip the risk_ceiling candidate entirely and fall through to the
+    normal min_price/computed max(), so liquidation relaxes the
+    (already risk-tightened, for MODERATE) `computed` exactly as it
+    always has for an unrestricted policy -- MODERATE's 25% ceiling still
+    shows up as a tighter interpolation STARTING point, it just no longer
+    blocks liquidation from relaxing past it. When risk isn't "high" at
+    all, this candidate is never added, so liquidation relaxes exactly as
+    before Section 2T -- existing liquidation-only and NONE-risk behavior
+    is unchanged."""
+    candidates = _floor_price_candidates(policy, qty, granted_perk_cost)
+    # max() with a list of (value, label) tuples compares tuples
+    # lexicographically on ties, which would pick by label text rather
+    # than insertion order -- so compare on the value alone via key=,
+    # keeping candidates ordered [min_price, computed, risk_ceiling] so a
+    # tie resolves to the same term Section 2H's evidence_path convention
+    # already established (min_price wins ties over computed).
+    price, evidence_path, _label, _detail = max(candidates, key=lambda c: c[0])
+    return price, evidence_path
+
+
+def _floor_price_candidates(policy, qty, granted_perk_cost=0):
+    """Section 2AB (2026-09-05): the exact candidate computation
+    _floor_price() takes max() over, extracted so a display/explainability
+    consumer (GET /api/floor-preview, for the frontend's "how is this
+    calculated?" breakdown) can show EVERY candidate and which one won --
+    not just the final number. Pure extraction, zero behavior change:
+    _floor_price() itself now just calls this and takes the max, so
+    there is exactly ONE place this formula is ever computed -- the same
+    "never duplicate, never let two implementations drift apart"
+    discipline this file follows everywhere else (the risk-vs-liquidation
+    and MODERATE-vs-qty_breaks bugs earlier were both exactly two
+    almost-identical computations silently disagreeing).
+
+    Returns a list of (value, evidence_path, label, detail) 4-tuples, in
+    the same fixed order _floor_price() itself relies on for tie-breaking
+    (min_price first, then the discount-tier floor, then the risk
+    ceiling if present) -- `label`/`detail` are human-readable, for
+    display only, and never touch the audit-log evidence_paths schema."""
     discount_pct, discount_evidence_path = _applicable_tier(policy, qty)
-    computed = policy["list_price"] * (1 - discount_pct / 100)
+    computed_before_liquidation = policy["list_price"] * (1 - discount_pct / 100)
+    # Captured BEFORE liquidation relaxation below can touch `computed` --
+    # see _floor_price()'s own docstring for why this must be a snapshot,
+    # not a live re-read. ONLY "high" -- see Section 2V correction there
+    # for why checking a broader "is risk active" signal was the bug.
+    risk_ceiling = computed_before_liquidation if policy.get("risk_level") == "high" else None
+
     liquidation_fraction = policy.get("liquidation_relaxation_fraction", 0.0)
-    if liquidation_fraction > 0:
+    computed = computed_before_liquidation
+    liquidation_applied = liquidation_fraction > 0
+    if liquidation_applied:
         computed = computed - liquidation_fraction * (computed - policy["min_price"])
-    if policy["min_price"] >= computed:
-        return policy["min_price"], "policy.min_price"
-    return computed, discount_evidence_path
+
+    min_price_floor = policy["min_price"] + granted_perk_cost
+    min_price_evidence = "policy.min_price" if granted_perk_cost == 0 else "policy.min_price+perk_cost"
+    min_price_label = "Absolute margin floor (min_price)" + (" + granted perk cost" if granted_perk_cost else "")
+    min_price_detail = (
+        f"min_price {policy['min_price']:.2f}" + (f" + perk cost {granted_perk_cost:.2f}" if granted_perk_cost else "")
+    )
+
+    discount_label = f"Discount-tier floor ({discount_pct:.2f}% off list price)"
+    discount_detail = f"list_price {policy['list_price']:.2f} x (1 - {discount_pct:.2f}%)"
+    if liquidation_applied:
+        discount_label += f", liquidation-relaxed {liquidation_fraction * 100:.0f}% toward min_price"
+        discount_detail += f", then relaxed {liquidation_fraction * 100:.0f}% of the way toward min_price {policy['min_price']:.2f}"
+
+    candidates = [
+        (min_price_floor, min_price_evidence, min_price_label, min_price_detail),
+        (computed, discount_evidence_path, discount_label, discount_detail),
+    ]
+    if risk_ceiling is not None:
+        candidates.append((
+            risk_ceiling, "risk_agent.discount_ceiling",
+            "Risk ceiling (HIGH risk -- full list price, liquidation suppressed)",
+            f"list_price {policy['list_price']:.2f}, captured before liquidation so a HIGH-risk buyer never gets an aged-inventory discount",
+        ))
+    return candidates
 
 
 def _evidence_label(policy, evidence_path):
@@ -95,8 +209,44 @@ def _evidence_label(policy, evidence_path):
     return evidence_path
 
 
-def _accept(offer, rationale, evidence_paths):
-    return {"decision": "accept", "offer": offer, "rationale": rationale, "evidence_paths": evidence_paths}
+def _resolve_perks(offer, policy, requested_perks):
+    """Milestone 9, Section 4E. Called ONLY once an offer's price already
+    clears the non-perk floor (i.e. would be accepted) -- perks are never
+    considered during counter-price computation, only at the moment of
+    acceptance, using whatever price the negotiation actually landed on.
+
+    Checks whether that price can ALSO afford whichever requested perks
+    are eligible (policy["eligible_perks"], resolved once upfront by
+    personalization.perk_eligibility() -- ineligible requests are already
+    conclusively declined before this ever runs, logged separately as a
+    perk_review entry; this function only ever sees candidates that
+    passed eligibility). Uses the SAME _floor_price() calculation as
+    every other floor check, just with the candidates' combined cost
+    folded in via granted_perk_cost -- not a second, separate check, per
+    the explicit requirement this guards against ("only one pathway
+    touched" bug class from liquidation/risk).
+
+    All-or-nothing: a buyer is eligible for at most one perk by
+    construction (personalization.perk_eligibility()), so there is no
+    meaningful "grant some, decline others" case to arbitrate here.
+    Returns (granted, declined_for_margin)."""
+    eligible_perks = policy.get("eligible_perks", [])
+    candidates = [p for p in requested_perks if p in eligible_perks]
+    if not candidates:
+        return [], []
+
+    total_cost = sum(policy.get(PERK_COST_FIELDS[p]) or 0 for p in candidates)
+    floor_with_perks, _ = _floor_price(policy, offer["qty"], granted_perk_cost=total_cost)
+    if offer["price"] >= floor_with_perks:
+        return candidates, []
+    return [], candidates
+
+
+def _accept(offer, rationale, evidence_paths, granted_perks=None, declined_perks=None):
+    return {
+        "decision": "accept", "offer": offer, "rationale": rationale, "evidence_paths": evidence_paths,
+        "granted_perks": granted_perks or [], "declined_perks": declined_perks or [],
+    }
 
 
 def _counter(counter_offer, rationale, evidence_paths):
@@ -107,7 +257,7 @@ def _reject(offer, rationale, evidence_paths):
     return {"decision": "reject", "offer": offer, "rationale": rationale, "evidence_paths": evidence_paths}
 
 
-def check_guardrails(offer, policy, round):
+def check_guardrails(offer, policy, round, requested_perks=None):
     """Layer 1 per NEGOTIATION_SPEC.md Section 3 / 3B -- pure, deterministic,
     non-negotiable. No LLM or network calls. This is the renamed/extended
     Milestone-1 evaluate() logic (added: policy.inventory_floor, the
@@ -127,7 +277,12 @@ def check_guardrails(offer, policy, round):
     through to the normal floor/counter logic below instead of an instant
     reject, because a heavily-aged product's _floor_price() can itself
     converge to exactly min_price (full ramp), at which point min_price
-    genuinely is the counter-able floor, not an instant dealbreaker."""
+    genuinely is the counter-able floor, not an instant dealbreaker.
+
+    `requested_perks` (Milestone 9, Section 4E, default None -- every
+    pre-existing caller unaffected): perk names the buyer asked for, if
+    any. Only ever consulted once the offer would already be accepted on
+    price alone -- see _resolve_perks()."""
     max_rounds = policy["max_negotiation_rounds"]
     inventory_floor = policy.get("inventory_floor", 1)
     floor, evidence_path = _floor_price(policy, offer["qty"])
@@ -172,11 +327,21 @@ def check_guardrails(offer, policy, round):
             [evidence_path],
         )
 
+    granted_perks, declined_perks = _resolve_perks(offer, policy, requested_perks or [])
+    perk_note = ""
+    if granted_perks:
+        perk_note = f" Perk(s) granted: {', '.join(granted_perks)}."
+    if declined_perks:
+        perk_note += (
+            f" Perk(s) declined: {', '.join(declined_perks)} -- the combined price concession and "
+            "perk cost would breach the minimum margin floor."
+        )
     return _accept(
         offer,
         f"Offer price {offer['price']} meets or exceeds the allowed floor {floor:.2f} for qty "
-        f"{offer['qty']}, per {_evidence_label(policy, evidence_path)}.",
+        f"{offer['qty']}, per {_evidence_label(policy, evidence_path)}.{perk_note}",
         [evidence_path],
+        granted_perks=granted_perks, declined_perks=declined_perks,
     )
 
 
@@ -186,14 +351,18 @@ def evaluate(offer, policy, round):
     return check_guardrails(offer, policy, round)
 
 
-def evaluate_rules(offer, policy, round, negotiation_history=None):
-    """MERCHANT_MODE=rules adapter: same 4-arg shape as evaluate_ai() (the
+def evaluate_rules(offer, policy, round, negotiation_history=None, requested_perks=None):
+    """MERCHANT_MODE=rules adapter: same shape as evaluate_ai() (the
     trailing negotiation_history is accepted and ignored) so
     negotiation_loop.run_negotiation() can call either uniformly. Does NOT
     set guardrail_clamped -- that field only ever appears on AI-merchant
     entries (Section 4C), so rules-only audit entries stay byte-identical
-    to Milestone 1/2/3a."""
-    return check_guardrails(offer, policy, round)
+    to Milestone 1/2/3a. `requested_perks` (Milestone 9): an eligible,
+    affordable perk is auto-granted here -- there's no LLM in rules mode
+    to exercise "whether/when" discretion, so the deterministic default
+    is to grant whatever Layer 1 itself already validated as eligible and
+    affordable (confirmed with the user)."""
+    return check_guardrails(offer, policy, round, requested_perks=requested_perks)
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +500,14 @@ def _validate_against_guardrails(strategy, guardrail_verdict, offer, policy, rou
 
     if strategy.action == "accept":
         if guardrail_verdict["decision"] == "accept":
-            return _accept(offer, strategy.concession_reasoning, guardrail_verdict["evidence_paths"]), False
+            # granted_perks/declined_perks are Layer 1's own, already-computed
+            # verdict -- carried through unchanged; Layer 2 only supplies the
+            # narrative (concession_reasoning), never the perk decision itself.
+            return _accept(
+                offer, strategy.concession_reasoning, guardrail_verdict["evidence_paths"],
+                granted_perks=guardrail_verdict.get("granted_perks"),
+                declined_perks=guardrail_verdict.get("declined_perks"),
+            ), False
         # The current offer does NOT clear the guardrail floor -- accepting
         # it would be exactly the violation this milestone exists to
         # prevent. Override with the guardrail's own verdict.
@@ -388,12 +564,23 @@ def _validate_against_guardrails(strategy, guardrail_verdict, offer, policy, rou
     return _counter(valid_offer, strategy.concession_reasoning, [evidence_path]), False
 
 
-def evaluate_ai(offer, policy, round, negotiation_history, llm_call=None, model=DEFAULT_MODEL, max_retries=3, sleep_fn=time.sleep):
+def evaluate_ai(offer, policy, round, negotiation_history, requested_perks=None, llm_call=None, model=DEFAULT_MODEL, max_retries=3, sleep_fn=time.sleep):
     """MERCHANT_MODE=ai top-level entry point: Layer 2 proposes, then Layer
     1 (check_guardrails) always re-validates before anything is returned.
     Falls back to rules-only for this round (not a crash, not a negotiation-
-    ending error) if the Gemini backend stays unavailable."""
-    guardrail_verdict = check_guardrails(offer, policy, round)
+    ending error) if the Gemini backend stays unavailable.
+
+    `requested_perks` (Milestone 9, Section 4E): passed straight to
+    check_guardrails() -- Layer 1 always makes the definitive
+    eligibility+affordability decision, exactly as in rules mode. Layer 2
+    (the LLM) is never given a "grant this perk" field to propose at all;
+    it only ever decides accept/counter/reject on price as before, and
+    whichever grant/decline Layer 1 already computed rides along
+    unchanged whenever an accept is validated (see
+    _validate_against_guardrails()'s "accept" branch). This keeps perk
+    grants on the same non-negotiable footing as eligibility -- no new
+    LLM-trust surface for a money-relevant decision."""
+    guardrail_verdict = check_guardrails(offer, policy, round, requested_perks=requested_perks)
 
     try:
         strategy = decide_strategy(

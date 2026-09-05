@@ -71,6 +71,27 @@ def _read_log(path):
         return [json.loads(line) for line in f if line.strip()]
 
 
+def test_opening_offer_prompt_shows_list_price_and_persona_appropriate_discount_guidance():
+    """Section 2AD (2026-09-05, replacing Section 2AC's MRP anchor,
+    reverted the same day): the buyer's prompt shows the product's real
+    `list_price` -- safe to reveal, it's the advertised price, not a
+    guardrail-derived number -- and instructs the model to reason out its
+    OWN opening offer as a persona-appropriate discount off it, rather
+    than requiring any externally-supplied starting price. The effective
+    floor is never computed or mentioned here at all."""
+    llm = ScriptedLLM([_decision(4200.0)])
+    buyer = AIBuyerAgent(qty=1, persona=PERSONA, list_price=POLICY["list_price"], llm_call=llm)
+
+    buyer.initial_offer()
+
+    prompt = llm.calls[0]["user_content"]
+    assert f"Product list price: {POLICY['list_price']}" in prompt
+    assert "choose them carefully from the product's list price" in prompt
+    assert "reasoned discount off list_price" in prompt
+    assert "persona's own negotiating style" in prompt
+    assert "MRP" not in prompt
+
+
 def test_structured_output_parses_into_valid_offer_schema():
     llm = ScriptedLLM([_decision(4000.0)])
     buyer = AIBuyerAgent(qty=1, persona=PERSONA, list_price=POLICY["list_price"], llm_call=llm)
@@ -191,7 +212,11 @@ def test_ai_buyer_negotiation_terminates_at_round_cap_when_never_converging(tmp_
     audit_path = tmp_path / "negotiation.log"
     # Every offer stays below the qty=1 floor (4399.12) and below its own
     # walk_away_price (4200) -- convergence is impossible, so the loop
-    # must exhaust max_negotiation_rounds and reject.
+    # must exhaust max_negotiation_rounds. Section 2X: this no longer
+    # means REJECTED outright -- run_negotiation() ALWAYS pauses as
+    # ROUND_LIMIT_REACHED when a merchant counter exists (one does here,
+    # every round before the final reject), carrying that counter as the
+    # offer for the human/buyer to decide on.
     llm = ScriptedLLM([
         _decision(4000.0, walk_away_price=4200.0),
         _decision(4050.0, walk_away_price=4200.0),
@@ -203,9 +228,13 @@ def test_ai_buyer_negotiation_terminates_at_round_cap_when_never_converging(tmp_
 
     outcome = run_negotiation(POLICY, buyer, audit_path=str(audit_path))
 
-    assert outcome["state"] == "REJECTED"
+    assert outcome["state"] == "ROUND_LIMIT_REACHED"
+    assert outcome["offer"] is not None  # the merchant's last real counter-offer, not fabricated
     entries = _read_log(audit_path)
-    merchant_entries = [e for e in entries if e["agent"] == "merchant-agent"]
+    # Per-round guardrail decisions only -- excludes the "round_limit_reached"
+    # pause marker itself (also agent="merchant-agent", but not a round
+    # decision; see run_negotiation()'s Section 2X handling).
+    merchant_entries = [e for e in entries if e["agent"] == "merchant-agent" and e["action"] in ("accept", "reject", "counter")]
     assert len(merchant_entries) == POLICY["max_negotiation_rounds"]
     assert merchant_entries[-1]["action"] == "reject"
     assert "policy.max_negotiation_rounds" in merchant_entries[-1]["evidence_paths"]

@@ -103,15 +103,22 @@ CATEGORIES = {
     },
 }
 
+# 2026-09-05 (Section 2AG, step 3 of 3): budget_range dropped -- a stored
+# absolute rupee range never reflected which product a buyer would
+# actually be negotiating over. src/personalization.PERSONA_DISCOUNT_BANDS
+# now derives a buyer's spending ceiling as a persona-appropriate discount
+# off whichever product's real list_price is in play, computed at
+# negotiation time (generate_negotiation_history.py, and
+# negotiation_loop.py's BUYER_ID CLI fallback) rather than stored here.
 PERSONAS = [
-    ("Bargain Hunter", (2000, 6000), "aggressive -- pushes hard for the lowest possible price"),
-    ("Loyal Regular", (4000, 12000), "moderate -- fair but expects recognition for repeat business"),
-    ("Bulk Buyer", (10000, 40000), "moderate -- focused on quantity discounts over per-unit haggling"),
-    ("Window Shopper", (1000, 3000), "easygoing -- browses often, rarely pushes hard on price"),
-    ("Premium Customer", (8000, 25000), "easygoing -- values convenience and quality over discounts"),
-    ("Occasional Buyer", (1500, 5000), "moderate -- open to a fair discount but not desperate"),
-    ("Whale", (30000, 80000), "moderate -- big spender, expects VIP-tier treatment"),
-    ("Stubborn Negotiator", (2000, 8000), "aggressive -- anchors low and concedes very slowly"),
+    ("Bargain Hunter", "aggressive -- pushes hard for the lowest possible price"),
+    ("Loyal Regular", "moderate -- fair but expects recognition for repeat business"),
+    ("Bulk Buyer", "moderate -- focused on quantity discounts over per-unit haggling"),
+    ("Window Shopper", "easygoing -- browses often, rarely pushes hard on price"),
+    ("Premium Customer", "easygoing -- values convenience and quality over discounts"),
+    ("Occasional Buyer", "moderate -- open to a fair discount but not desperate"),
+    ("Whale", "moderate -- big spender, expects VIP-tier treatment"),
+    ("Stubborn Negotiator", "aggressive -- anchors low and concedes very slowly"),
 ]
 
 # A handful of buyers get outsized order weight -- "whales" -- so the LTV
@@ -131,6 +138,24 @@ WHALE_BUYER_INDICES = {2, 7, 15}  # 0-indexed into the 30 generated buyers
 AGED_PRODUCT_LOCAL_INDEX = 2
 AGED_PRODUCT_MIN_DAYS_PAST_THRESHOLD = 20   # comfortably past the threshold...
 AGED_PRODUCT_MAX_DAYS_PAST_THRESHOLD = 220  # ...up to genuinely extreme
+
+# Milestone 9 (Section 4E, multi-dimensional negotiation): what each perk
+# actually costs the merchant to provide -- confirmed with the user.
+# shipping_cost scales with a category's typical physical bulk (a flat
+# per-category table, not tied to individual product price); warranty_cost
+# scales with the product's own cost (WARRANTY_COST_RATE, a realistic
+# reserve rate for 1-year extended coverage), computed per product below.
+CATEGORY_SHIPPING_COST = {
+    "Books & Media": 35,
+    "Office & Stationery": 40,
+    "Beauty & Personal Care": 50,
+    "Toys & Games": 55,
+    "Apparel & Fashion": 60,
+    "Home & Kitchen": 90,
+    "Sporting Goods & Outdoors": 100,
+    "Electronics": 130,
+}
+WARRANTY_COST_RATE = 0.06
 
 
 def _round_price(value):
@@ -179,6 +204,8 @@ def generate_catalog(rng):
                 "current_inventory": rng.randint(5, 150),
                 "inventory_floor": rng.choice([1, 1, 1, 2, 2, 3]),
                 "days_in_inventory": days_in_inventory,
+                "shipping_cost": CATEGORY_SHIPPING_COST[category],
+                "warranty_cost": _round_price(cost * WARRANTY_COST_RATE),
             })
     assert len(catalog) == NUM_PRODUCTS
     return catalog
@@ -188,11 +215,10 @@ def generate_buyers(rng):
     buyers = []
     categories = list(CATEGORIES.keys())
     for i in range(NUM_BUYERS):
-        persona_label, budget_range, style = PERSONAS[i % len(PERSONAS)]
+        persona_label, style = PERSONAS[i % len(PERSONAS)]
         buyers.append({
             "buyer_id": f"BUYER-{i + 1:03d}",
             "persona": persona_label,
-            "budget_range": {"min": budget_range[0], "max": budget_range[1]},
             "category_affinity": categories[rng.randrange(len(categories))],
             "negotiation_style": style,
         })
