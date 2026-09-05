@@ -2881,6 +2881,124 @@ next**:
 
 ---
 
+## Section 2AH — Second, independent free_delivery eligibility path: qty > 10 (2026-09-05)
+
+**Request**: add a second, independent basis for `free_delivery`
+eligibility -- `qty > PERK_LARGE_QTY_THRESHOLD` (10), regardless of order
+history or persona -- ADDITIONAL to the existing "0 prior orders" rule,
+not a replacement. A returning buyer placing a large order (qty > 10)
+now qualifies for `free_delivery` on that basis alone. The existing
+overrides (Window Shopper persona, HIGH risk) must still win over this
+new rule, same as they already win over the original rules.
+
+**`personalization.PERK_LARGE_QTY_THRESHOLD = 10`** -- deliberately its
+own constant, not a reuse of `RISK_LARGE_QTY_FALLBACK_THRESHOLD`, even
+though both happen to be 10 in the current data. They answer different
+questions ("is this order big enough to earn free delivery on its own
+merits?" vs. "is this qty, combined with a new buyer, a pricing-abuse
+signal?") and were confirmed with the user as intentionally separate
+thresholds that could diverge later.
+
+**`personalization.perk_eligibility()` signature changed**: now takes
+`qty` as a new required parameter (`perk_eligibility(buyer_id, orders,
+persona, risk_level, qty)`). One call site (`negotiation_loop.py`'s
+`run_negotiation()`) updated to pass `buyer.qty` -- the same value
+`risk_assessment()` a few lines above it already uses.
+
+**Precedence, all five rules** (1-2 unchanged, checked first and still
+short-circuit everything below; 3-5 all independently evaluated):
+1. `risk_level == "high"` → no perks at all (unchanged).
+2. `persona == "Window Shopper"` → no perks at all (unchanged).
+3. 0 prior orders → eligible for `free_delivery` (unchanged).
+4. `qty > PERK_LARGE_QTY_THRESHOLD` → **also** eligible for
+   `free_delivery` (new) -- independent of rule 3, not exclusive with it.
+5. `>0` prior orders → eligible for `extended_warranty` (unchanged).
+
+**The "at most one perk by construction" invariant is broken, on
+purpose.** Rules 4 and 5 are no longer mutually exclusive: an
+established buyer (rule 5, prior_orders > 0) placing a qty > 10 order
+(rule 4) is now eligible for **both** `free_delivery` and
+`extended_warranty` at once. `merchant_agent._resolve_perks()` required
+**zero code changes** -- `candidates = [p for p in requested_perks if p
+in eligible_perks]` and `total_cost = sum(...)` already generalize to N
+simultaneous candidates with no special-casing for "at most one"; only
+that function's docstring claim about the old invariant was stale and
+has been corrected. All-or-nothing behavior is preserved: two
+simultaneous candidates are still granted or declined **together**,
+based on whether the offer clears the floor with their **combined** cost
+folded in -- never "grant some, decline others."
+
+**Confirmed with real data (Bulk Buyer, BUYER-003, real order history)**
+at qty=11, the exact case the user asked to see:
+
+```
+BUYER-003 persona='Bulk Buyer', prior_orders=36
+risk_level at qty=11: 'moderate' -- large request (qty 11 vs typical 10);
+  discount ceiling reduced to 25% of normal.
+
+perk_eligibility result:
+  eligible: ['free_delivery', 'extended_warranty']
+  rule:     established_buyer+large_qty
+  rationale: buyer_id=BUYER-003 has 36 prior order(s) and
+    persona='Bulk Buyer' -- eligible for extended_warranty (established
+    buyer). qty 11 also exceeds the large-order threshold (10),
+    independently qualifying for free_delivery too -- eligible for both.
+```
+
+Both perks apply simultaneously -- confirmed via a full `run_negotiation()`
+run too (not just the pure-function result): `granted_perks ==
+["free_delivery", "extended_warranty"]`, both granted together in one
+acceptance, since the discount-tier floor at MODERATE risk (950.0, list
+price 1000.0 × 0.95) already clears both perks' combined cost even
+before folding it in.
+
+**Why an established buyer specifically, not a new one**: a genuinely
+NEW buyer (0 prior orders) placing a qty > 10 order trips risk_assessment()'s
+own `new_buyer` AND `large_request` factors together -- HIGH risk --
+which zeroes perk eligibility entirely via rule 1, before rules 3/4 are
+ever reached. This is unavoidable and by design (Section 2N): the new
+qty-based perk rule can never actually fire for a genuinely new buyer in
+practice, since HIGH risk always intercepts that combination first. The
+rule's real-world effect is specifically for an ESTABLISHED buyer
+ordering qty > 10, who isn't a new buyer and (by construction --
+`risk_assessment()`'s HIGH level requires BOTH factors, and an
+established buyer can never trip `new_buyer`) can never be HIGH risk
+either -- confirmed directly: `test_high_risk_override_still_wins_for_established_buyer_at_large_qty`
+forces `risk_level="high"` directly into `perk_eligibility()` anyway
+(bypassing `risk_assessment()`, which can't naturally produce that
+combination) to prove the override's precedence doesn't silently depend
+on that being unreachable.
+
+**Overrides re-verified at qty > 10, not just assumed unchanged**:
+- Window Shopper, established buyer (5 prior orders), qty=11: still
+  `eligible: []`, `rule: window_shopper` -- the new qty rule does not
+  leak through the persona override.
+- Window Shopper, NEW buyer (0 prior orders), qty=11: lands on
+  `risk_override` instead (this combination is HIGH risk, a different,
+  already-covered override) -- not tested as a `window_shopper` case for
+  that reason, noted directly in the test.
+- HIGH risk (forced), established buyer, qty=11: still `eligible: []`,
+  `rule: risk_override`.
+
+**Tests** (`tests/e2e/negotiation/test_perks.py`):
+- `test_established_buyer_large_qty_eligible_for_both_perks_simultaneously`
+  (new): the exact qty=11/established/non-Window-Shopper/non-HIGH-risk
+  case requested -- full `run_negotiation()` run, asserts both perks
+  granted together, `risk_level == "moderate"` (confirming NOT high),
+  and the `perk_review` audit entry's `evidence_paths`/`rationale`.
+- `test_window_shopper_both_perks_declined_regardless_of_order_history`
+  (extended): parametrized over `(prior_orders, qty)` pairs now, adding
+  `(5, 11)` to prove the persona override still wins over the new rule.
+- `test_high_risk_override_still_wins_for_established_buyer_at_large_qty`
+  (new): direct unit test of `perk_eligibility()`, forcing the otherwise-
+  unreachable HIGH-risk-established-buyer combination, per the "why an
+  established buyer" note above.
+
+Full suite: 120 passed, 3 skipped (117 + 3: one new parametrize case,
+two new test functions) -- zero regressions.
+
+---
+
 ## Section 3 — State machine
 
 ### States
@@ -3459,25 +3577,35 @@ through behavior instead of the old re-clamp.
 
 ### Eligibility
 
-`personalization.perk_eligibility(buyer_id, orders, persona, risk_level)` —
+`personalization.perk_eligibility(buyer_id, orders, persona, risk_level, qty)` —
 pure function, called once per negotiation (same place/timing as
 `risk_assessment()`), reusing the risk_level `risk_assessment()` already
-computed rather than re-deriving it. Checked in this order, each
-overriding what follows:
+computed rather than re-deriving it. `qty` (Section 2AH, 2026-09-05) is
+`buyer.qty`, the same value already passed to `risk_assessment()`.
+Checked in this order, rules 1-2 overriding everything below them, rules
+3-5 each independently evaluated:
 
 | Rule | Condition | Eligible perks |
 |---|---|---|
 | 1 | `risk_level == "high"` | `[]` — overrides everything, consistent with the discount ceiling also being zeroed at HIGH risk |
-| 2 | `persona == "Window Shopper"` | `[]` — regardless of order history |
+| 2 | `persona == "Window Shopper"` | `[]` — regardless of order history or qty |
 | 3 | `count_prior_orders(buyer_id, orders) == 0` | `["free_delivery"]` |
-| 4 | `count_prior_orders(buyer_id, orders) > 0` (any other persona) | `["extended_warranty"]` |
+| 4 | `qty > PERK_LARGE_QTY_THRESHOLD` (10) — Section 2AH | **also** `["free_delivery"]` — independent of rule 3, not exclusive with it |
+| 5 | `count_prior_orders(buyer_id, orders) > 0` | `["extended_warranty"]` |
 
-A buyer is eligible for at most one perk by construction (rules 3/4 are a
-strict partition on order count). This order-count threshold is
-DELIBERATELY not `RISK_NEW_BUYER_MAX_PRIOR_ORDERS` (2, the Risk Agent's own
-"new buyer" factor) — a different question (has this buyer ever ordered
-here at all, vs. risk of abusive lowballing) — confirmed with the user as
-an intentional distinction.
+**A buyer is no longer guaranteed at most one perk** (Section 2AH broke
+this on purpose): rules 4 and 5 can both fire for the same buyer — an
+established buyer (rule 5) placing a qty > 10 order (rule 4) is eligible
+for **both** `free_delivery` and `extended_warranty` at once. See
+Section 2AH for the full rationale, the Bulk Buyer worked example, and
+why `merchant_agent._resolve_perks()` needed no code changes to handle
+this. The order-count threshold (rules 3/5) is DELIBERATELY not
+`RISK_NEW_BUYER_MAX_PRIOR_ORDERS` (2, the Risk Agent's own "new buyer"
+factor) — a different question (has this buyer ever ordered here at all,
+vs. risk of abusive lowballing) — confirmed with the user as an
+intentional distinction. `PERK_LARGE_QTY_THRESHOLD` (rule 4) is likewise
+deliberately its own constant, not a reuse of
+`RISK_LARGE_QTY_FALLBACK_THRESHOLD`, despite both being 10 today.
 
 Resolved once, upfront, in `run_negotiation()` (only when `buyer_id`/
 `orders`/`persona` are all given and `requested_perks` is non-empty — every

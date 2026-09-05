@@ -26,6 +26,7 @@
   header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
   h1 { margin: 0; font-size: 22px; }
   .subtitle { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
+  .nav-links { display: flex; gap: 8px; }
   a.dashboard-link {
     color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600;
     border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
@@ -150,6 +151,15 @@
   #outcome-card .price-line { font-size: 20px; font-weight: 700; margin: 10px 0 4px 0; }
   #outcome-card .detail-line { font-size: 13px; color: var(--muted); }
   #outcome-card .detail-line code { font-family: ui-monospace, Consolas, monospace; }
+  #outcome-perks h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted);
+    margin: 16px 0 8px 0; padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  #outcome-perks .perk-row { font-size: 13px; padding: 3px 0; }
+  #outcome-perks .perk-mark { font-weight: 700; display: inline-block; width: 14px; }
+  #outcome-perks .perk-row.granted .perk-mark { color: var(--green-text); }
+  #outcome-perks .perk-row.declined .perk-mark { color: var(--red-text); }
+  #outcome-perks .perk-reason { color: var(--muted); }
 
   #floor-reveal-card { display: none; }
 
@@ -187,7 +197,10 @@
       <h1>Parley Negotiation</h1>
       <p class="subtitle">Pick a merchant, product, and buyer, then negotiate against the real Parley engine.</p>
     </div>
-    <a class="dashboard-link" href="../dashboard.html" target="_blank">View Dashboard &rarr;</a>
+    <div class="nav-links">
+      <a class="dashboard-link" href="inventory.html">View Inventory &rarr;</a>
+      <a class="dashboard-link" href="../dashboard.html" target="_blank">View Dashboard &rarr;</a>
+    </div>
   </header>
 
   <div class="error-banner" id="error-banner"></div>
@@ -361,6 +374,16 @@ let catalogCache = [];
 // floor reveal must describe the floor for what was ACTUALLY negotiated,
 // not whatever happens to be selected in the form by the time it renders.
 let lastNegotiationParams = null;
+// Section 4F: which perks were actually REQUESTED at submit time -- needed
+// to distinguish "ineligible" (requested, but never in granted_perks OR
+// declined_perks -- perk_eligibility() filtered it out before
+// _resolve_perks() ever ran) from "declined for margin" (requested,
+// eligible, but landed in declined_perks). Neither the API's completed
+// response nor the pending_approval/round_limit_reached ones ever echo
+// back requested_perks, so the frontend keeps its own copy -- same
+// capture-at-submit-time discipline as lastNegotiationParams above, since
+// this can't change mid-negotiation either.
+let lastRequestedPerks = [];
 
 function escapeHtml(s) {
   const div = document.createElement("div");
@@ -668,6 +691,51 @@ function negotiatedPriceLine(offer, listPrice) {
   return `${offer.price} x${offer.qty}`;
 }
 
+const PERK_LABELS = { free_delivery: "Free Delivery", extended_warranty: "Extended Warranty" };
+const perkLabel = (p) => PERK_LABELS[p] || p;
+
+// Section 4F: shown alongside payment info in the outcome card, for every
+// terminal state renderOutcome() handles (COMPLETED, REJECTED, ROLLBACK,
+// APPROVAL_DECLINED) -- perks are decided once, at acceptance, before
+// payment ever runs, so the decision already exists even when payment
+// itself never completed. Uses ONLY fields the API already returns
+// (granted_perks, declined_perks, perk_review) plus lastRequestedPerks
+// (the frontend's own record of what it asked for) -- no new backend
+// logic. declined_perks (per merchant_agent._resolve_perks()'s contract)
+// only ever holds perks that were ELIGIBLE but couldn't clear the margin
+// floor; a requested perk that's neither granted nor in declined_perks
+// was filtered out earlier as ineligible (persona/risk), before
+// _resolve_perks() ever ran -- perk_review (when present) carries that
+// rule's real rationale text as the reason.
+function renderPerks(data) {
+  const perksEl = el("outcome-perks");
+  const requested = lastRequestedPerks || [];
+  // No offer at all (REJECTED, or any other no-agreement state) means
+  // perks were genuinely never decided either way -- granted_perks/
+  // declined_perks are always empty in that case (_resolve_perks() only
+  // ever runs once an offer is about to be accepted), so treating an
+  // eligible-but-never-reached perk as "ineligible" here would misreport
+  // it. Only render once an agreement actually exists.
+  if (!requested.length || !data.offer) {
+    perksEl.innerHTML = "";
+    return;
+  }
+
+  const granted = data.granted_perks || [];
+  const declinedForMargin = data.declined_perks || [];
+  const ineligible = requested.filter(p => !granted.includes(p) && !declinedForMargin.includes(p));
+  const ineligibleReason = (data.perk_review && data.perk_review.rationale)
+    ? data.perk_review.rationale
+    : "not eligible for this negotiation";
+
+  const rows = [
+    ...granted.map(p => `<div class="perk-row granted"><span class="perk-mark">&check;</span>${escapeHtml(perkLabel(p))}</div>`),
+    ...declinedForMargin.map(p => `<div class="perk-row declined"><span class="perk-mark">&times;</span>${escapeHtml(perkLabel(p))} <span class="perk-reason">-- declined, would breach the margin floor</span></div>`),
+    ...ineligible.map(p => `<div class="perk-row declined"><span class="perk-mark">&times;</span>${escapeHtml(perkLabel(p))} <span class="perk-reason">-- ${escapeHtml(ineligibleReason)}</span></div>`),
+  ];
+  perksEl.innerHTML = rows.length ? `<h3>Perks</h3>${rows.join("")}` : "";
+}
+
 function renderOutcome(data) {
   const badge = el("outcome-badge");
   badge.textContent = data.state;
@@ -694,14 +762,7 @@ function renderOutcome(data) {
     detailEl.textContent = "";
   }
 
-  const perksEl = el("outcome-perks");
-  const granted = data.granted_perks || [];
-  const declined = data.declined_perks || [];
-  const perkLabel = (p) => (p === "free_delivery" ? "Free delivery" : p === "extended_warranty" ? "Extended warranty" : p);
-  let perkText = "";
-  if (granted.length) perkText += `Granted: ${granted.map(perkLabel).join(", ")}. `;
-  if (declined.length) perkText += `Declined (would breach the margin floor): ${declined.map(perkLabel).join(", ")}.`;
-  perksEl.textContent = perkText;
+  renderPerks(data);
 
   outcomeCard.style.display = "block";
   renderPaymentCard(data);
@@ -832,6 +893,7 @@ async function startNegotiation() {
   // still running (it can take minutes), and the post-outcome floor
   // reveal must describe what was ACTUALLY negotiated.
   lastNegotiationParams = { productId, buyerId, qty };
+  lastRequestedPerks = requestedPerks;
 
   const aiActive = buyerMode === "ai" || merchantMode === "ai";
   startBtn.disabled = true;

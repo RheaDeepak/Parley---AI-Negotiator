@@ -293,6 +293,29 @@ def dashboard_data():
     return compute_dashboard_data()
 
 
+@app.get("/api/inventory")
+def get_inventory():
+    """Read-only merchant inventory dashboard. No negotiation/pricing
+    logic here -- just a straight read of catalog.json plus a computed
+    is_liquidation_eligible flag, reusing personalization.
+    liquidation_threshold_for() (the same category-threshold lookup
+    merchant_agent._floor_price()'s liquidation ramp is built on) rather
+    than re-deriving that threshold logic here."""
+    catalog = personalization.load_json(personalization.DEFAULT_CATALOG_PATH)
+    return [
+        {
+            "sku_id": p["sku_id"],
+            "product_name": p["product_name"],
+            "category": p["category"],
+            "current_inventory": p["current_inventory"],
+            "inventory_floor": p["inventory_floor"],
+            "days_in_inventory": p["days_in_inventory"],
+            "is_liquidation_eligible": p["days_in_inventory"] > personalization.liquidation_threshold_for(p["category"]),
+        }
+        for p in catalog
+    ]
+
+
 @app.post("/api/negotiate")
 def negotiate(req: NegotiateRequest):
     catalog = personalization.load_json(personalization.DEFAULT_CATALOG_PATH)

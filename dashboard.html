@@ -22,8 +22,15 @@
     margin: 0; padding: 32px; background: var(--bg); color: var(--text);
     font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   }
-  h1 { margin: 0 0 4px 0; font-size: 22px; }
-  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 28px 0; }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
+  h1 { margin: 0; font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
+  .nav-links { display: flex; gap: 8px; }
+  a.nav-link {
+    color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
+  }
+  a.nav-link:hover { border-color: var(--accent); }
   .live-dot {
     display: inline-block; width: 7px; height: 7px; border-radius: 50%;
     background: var(--green-text); margin-right: 5px; vertical-align: 1px;
@@ -80,8 +87,16 @@
 </style>
 </head>
 <body>
-  <h1>Parley Negotiation Dashboard</h1>
-  <p class="subtitle" id="subtitle"><span class="live-dot" id="live-dot"></span>Loading…</p>
+  <header>
+    <div>
+      <h1>Parley Negotiation Dashboard</h1>
+      <p class="subtitle" id="subtitle"><span class="live-dot" id="live-dot"></span>Loading…</p>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="frontend/index.html">Negotiate</a>
+      <a class="nav-link" href="frontend/inventory.html">View Inventory &rarr;</a>
+    </div>
+  </header>
 
   <div class="error-banner" id="error-banner"></div>
 

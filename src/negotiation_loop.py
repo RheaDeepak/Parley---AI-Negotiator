@@ -174,8 +174,10 @@ def run_negotiation(
     are all given and requested_perks is non-empty,
     personalization.perk_eligibility() runs once (reusing the SAME
     risk_level already computed above -- HIGH risk overrides perk
-    eligibility, consistent with it also zeroing the discount ceiling),
-    logged as a perk_review entry (same pattern as risk_review), and the
+    eligibility, consistent with it also zeroing the discount ceiling --
+    and buyer.qty, since Section 2AH added a qty-based eligibility path
+    independent of order history), logged as a perk_review entry (same
+    pattern as risk_review), and the
     result is merged into the local `policy` copy as
     policy["eligible_perks"] for merchant_agent.check_guardrails() to
     consult at acceptance time. An ineligible request is conclusively
@@ -279,7 +281,7 @@ def run_negotiation(
             )
 
     if buyer_id is not None and orders is not None and persona is not None and requested_perks:
-        perk_result = personalization.perk_eligibility(buyer_id, orders, persona, risk_level)
+        perk_result = personalization.perk_eligibility(buyer_id, orders, persona, risk_level, buyer.qty)
         # Local reassignment only -- never mutates the caller's original
         # policy dict, same discipline as apply_risk_discount_cap() above.
         policy = {**policy, "eligible_perks": perk_result["eligible"]}

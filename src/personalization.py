@@ -420,7 +420,20 @@ PERK_COST_FIELDS = {
 }
 
 
-def perk_eligibility(buyer_id, orders, persona, risk_level):
+# Section 2AH (2026-09-05): a SECOND, independent basis for free_delivery
+# eligibility -- qty strictly greater than this threshold, regardless of
+# order history. Deliberately its OWN constant, not a reuse of
+# RISK_LARGE_QTY_FALLBACK_THRESHOLD above, even though both happen to be
+# 10 in the current data: they answer different questions (this one is
+# "is this order big enough to earn free delivery on its own merits?";
+# that one is "is this qty, combined with a new buyer, a pricing-abuse
+# signal?") and were confirmed with the user as intentionally separate
+# thresholds that could diverge in the future -- same discipline as the
+# RISK_NEW_BUYER_MAX_PRIOR_ORDERS-vs-perk-order-count distinction below.
+PERK_LARGE_QTY_THRESHOLD = 10
+
+
+def perk_eligibility(buyer_id, orders, persona, risk_level, qty):
     """Milestone 9 (Section 4E). Deterministic, no LLM -- same pattern as
     risk_assessment(): a pure function over already-known facts, called
     ONCE per negotiation before any offer exists. Precedence (checked in
@@ -428,12 +441,31 @@ def perk_eligibility(buyer_id, orders, persona, risk_level):
       1. risk_level == "high" -> no perks at all, consistent with the
          discount ceiling also being zeroed for HIGH risk.
       2. persona == "Window Shopper" -> no perks at all, regardless of
-         order history.
-      3. 0 prior orders -> eligible for free_delivery only.
-      4. >0 prior orders (any other persona) -> eligible for
-         extended_warranty only.
-    A buyer is eligible for AT MOST one perk by construction (rules 3/4
-    are mutually exclusive on order count) -- never both at once.
+         order history or qty.
+      3. 0 prior orders -> eligible for free_delivery.
+      4. qty > PERK_LARGE_QTY_THRESHOLD (Section 2AH, 2026-09-05) ->
+         ALSO eligible for free_delivery -- independent of rule 3, not a
+         replacement for it. A returning buyer placing a large order
+         (qty > 10) qualifies on this basis alone.
+      5. >0 prior orders -> eligible for extended_warranty.
+
+    Rules 3/4 grant the SAME perk (free_delivery) -- listed once even if
+    both fire. Rules 4/5 are NOT mutually exclusive any more: an
+    established buyer (rule 5) placing a qty>10 order (rule 4) is now
+    eligible for BOTH free_delivery and extended_warranty at once. The
+    original "at most one perk by construction" invariant no longer
+    holds -- merchant_agent._resolve_perks() already handles N
+    simultaneous candidates generically (sums their cost, one floor
+    check), so this required no change there, only to its own docstring's
+    now-stale claim about "at most one".
+
+    In practice, a genuinely NEW buyer (0 prior orders) placing a qty>10
+    order will almost always already be HIGH risk (rules 3+4 here mirror
+    risk_assessment()'s own "new_buyer" + "large_request" factors, which
+    together mean HIGH) and get nothing at all via rule 1 above, before
+    rules 3/4 are ever reached -- this rule's practical effect is mainly
+    for an ESTABLISHED buyer ordering qty>10, who isn't a new buyer and
+    isn't automatically HIGH risk.
 
     Deliberately NOT the same order-count threshold as the Risk Agent's
     "new buyer" factor (RISK_NEW_BUYER_MAX_PRIOR_ORDERS, currently 2) --
@@ -443,7 +475,7 @@ def perk_eligibility(buyer_id, orders, persona, risk_level):
 
     Returns {"eligible": [...], "rule": str, "rationale": str} -- same
     shape/spirit as risk_assessment()'s return, for the perk_review audit
-    entry to log directly."""
+    entry to log directly. "eligible" can now hold 0, 1, or 2 perk names."""
     prior_orders = count_prior_orders(buyer_id, orders)
 
     if risk_level == "high":
@@ -459,14 +491,44 @@ def perk_eligibility(buyer_id, orders, persona, risk_level):
             "eligible": [], "rule": "window_shopper",
             "rationale": f"buyer_id={buyer_id}'s persona is Window Shopper; no perks are ever offered to this persona, regardless of order history.",
         }
-    if prior_orders == 0:
+
+    is_new_buyer = prior_orders == 0
+    is_large_qty = qty > PERK_LARGE_QTY_THRESHOLD
+
+    if is_new_buyer and not is_large_qty:
         return {
             "eligible": ["free_delivery"], "rule": "new_buyer",
             "rationale": f"buyer_id={buyer_id} has {prior_orders} prior orders (a new buyer) -- eligible for free_delivery only.",
         }
+    if not is_new_buyer and not is_large_qty:
+        return {
+            "eligible": ["extended_warranty"], "rule": "established_buyer",
+            "rationale": f"buyer_id={buyer_id} has {prior_orders} prior order(s) and persona={persona!r} -- eligible for extended_warranty only.",
+        }
+    if is_new_buyer and is_large_qty:
+        # Reachable in principle, but see the docstring above: this
+        # combination almost always means HIGH risk instead, intercepted
+        # by rule 1 before this branch is ever reached. Still eligible
+        # for free_delivery only either way -- extended_warranty requires
+        # prior orders regardless of qty.
+        return {
+            "eligible": ["free_delivery"], "rule": "new_buyer+large_qty",
+            "rationale": (
+                f"buyer_id={buyer_id} has {prior_orders} prior orders (a new buyer) and qty {qty} exceeds "
+                f"the large-order threshold ({PERK_LARGE_QTY_THRESHOLD}) -- both independently qualify for "
+                "free_delivery; still eligible for free_delivery only, since extended_warranty requires prior orders."
+            ),
+        }
+    # not is_new_buyer and is_large_qty -- Section 2AH's new case: an
+    # established buyer's large order earns free_delivery on top of the
+    # extended_warranty they were already eligible for. Both at once.
     return {
-        "eligible": ["extended_warranty"], "rule": "established_buyer",
-        "rationale": f"buyer_id={buyer_id} has {prior_orders} prior order(s) and persona={persona!r} -- eligible for extended_warranty only.",
+        "eligible": ["free_delivery", "extended_warranty"], "rule": "established_buyer+large_qty",
+        "rationale": (
+            f"buyer_id={buyer_id} has {prior_orders} prior order(s) and persona={persona!r} -- eligible for "
+            f"extended_warranty (established buyer). qty {qty} also exceeds the large-order threshold "
+            f"({PERK_LARGE_QTY_THRESHOLD}), independently qualifying for free_delivery too -- eligible for both."
+        ),
     }
 
 

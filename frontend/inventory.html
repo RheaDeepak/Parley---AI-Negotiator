@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Parley Inventory Dashboard</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card-bg: #ffffff;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-bg: #eff6ff;
+    --green-bg: #dcfce7; --green-text: #166534;
+    --red-bg: #fee2e2; --red-text: #991b1b;
+    --amber-bg: #fef3c7; --amber-text: #92400e;
+    --gray-bg: #e5e7eb; --gray-text: #374151;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
+  h1 { margin: 0; font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
+  .nav-links { display: flex; gap: 8px; }
+  a.nav-link {
+    color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
+  }
+  a.nav-link:hover { border-color: var(--accent); }
+  .live-dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green-text); margin-right: 5px; vertical-align: 1px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .live-dot.stale { background: var(--red-text); animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-value { font-size: 24px; font-weight: 600; margin-top: 6px; }
+  .table-scroll {
+    overflow-x: auto; background: var(--card-bg);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  table { width: 100%; min-width: 720px; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { background: #fafbfc; font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th.sorted { color: var(--accent); }
+  tr:last-child td { border-bottom: none; }
+  tr.row-liquidation { background: var(--amber-bg); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); }
+  td.empty { text-align: center; color: var(--muted); padding: 24px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge-liquidation { background: var(--amber-text); color: var(--amber-bg); }
+  .badge-normal { background: var(--gray-bg); color: var(--gray-text); }
+  .note { font-size: 12px; color: var(--muted); margin: 10px 2px 0 2px; }
+  footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
+  .error-banner {
+    background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 10px 14px;
+    font-size: 13px; margin-bottom: 20px; display: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --card-bg: #1e2128; --text: #e6e8eb; --muted: #9aa1ac; --border: #2b2f38;
+      --accent: #3b82f6; --accent-bg: #16233d;
+      --green-bg: #113321; --green-text: #4ade80;
+      --red-bg: #3a1414; --red-text: #f87171;
+      --amber-bg: #3a2c0f; --amber-text: #fbbf24;
+      --gray-bg: #2b2f38; --gray-text: #b8bec9;
+    }
+    th { background: #1a1d23; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Parley Inventory</h1>
+      <p class="subtitle" id="subtitle"><span class="live-dot" id="live-dot"></span>Loading…</p>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="index.html">Negotiate</a>
+      <a class="nav-link" href="../dashboard.html">View Dashboard &rarr;</a>
+    </div>
+  </header>
+
+  <div class="error-banner" id="error-banner"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Product</th>
+          <th>Category</th>
+          <th class="sortable num" data-sort="current_inventory">Current inventory</th>
+          <th class="num">Inventory floor</th>
+          <th class="sortable num" data-sort="days_in_inventory">Days in inventory</th>
+          <th>Liquidation status</th>
+        </tr>
+      </thead>
+      <tbody id="inventory-rows"></tbody>
+    </table>
+  </div>
+
+  <p class="note">Rows tinted amber and marked "Liquidation-eligible" have sat past their category's
+  liquidation threshold -- see NEGOTIATION_SPEC.md Section 2E for the discount-cap-relaxation this
+  triggers. Click "Current inventory" or "Days in inventory" to sort.</p>
+
+  <footer id="footer">Live from GET /api/inventory</footer>
+
+<script>
+// Read-only merchant inventory view. Fetches live from GET /api/inventory
+// on load -- no negotiation/pricing logic here, no static-file generator
+// (unlike dashboard.html's scripts/generate_dashboard.py fallback): this
+// table is simple enough that a live-only fetch (same pattern
+// dashboard.html itself now uses -- Section 2Z) is sufficient.
+const API_BASE = "http://localhost:8000";
+
+const el = (id) => document.getElementById(id);
+const errorBanner = el("error-banner");
+
+let rows = [];
+let sortColumn = "days_in_inventory";
+let sortDescending = true;
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function setLiveDotStale(isStale) {
+  const dot = el("live-dot");
+  if (dot) dot.className = "live-dot" + (isStale ? " stale" : "");
+}
+
+function renderStats(data) {
+  const eligibleCount = data.filter(p => p.is_liquidation_eligible).length;
+  const totalUnits = data.reduce((sum, p) => sum + p.current_inventory, 0);
+  const cards = [
+    ["Total products", data.length],
+    ["Liquidation-eligible", eligibleCount],
+    ["Total units in stock", totalUnits],
+  ];
+  el("stats").innerHTML = cards.map(([label, value]) =>
+    `<div class="stat-card"><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${escapeHtml(String(value))}</div></div>`
+  ).join("");
+}
+
+function renderTable() {
+  const sorted = [...rows].sort((a, b) => {
+    const diff = a[sortColumn] - b[sortColumn];
+    return sortDescending ? -diff : diff;
+  });
+
+  document.querySelectorAll("th.sortable").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.sort === sortColumn);
+  });
+
+  const html = sorted.map(p => `
+    <tr class="${p.is_liquidation_eligible ? "row-liquidation" : ""}">
+      <td class="mono">${escapeHtml(p.sku_id)}</td>
+      <td>${escapeHtml(p.product_name)}</td>
+      <td>${escapeHtml(p.category)}</td>
+      <td class="num">${p.current_inventory}</td>
+      <td class="num">${p.inventory_floor}</td>
+      <td class="num">${p.days_in_inventory}</td>
+      <td>${p.is_liquidation_eligible
+        ? '<span class="badge badge-liquidation">Liquidation-eligible</span>'
+        : '<span class="badge badge-normal">Normal</span>'}</td>
+    </tr>`).join("");
+  el("inventory-rows").innerHTML = html || '<tr><td colspan="7" class="empty">No products found.</td></tr>';
+}
+
+document.querySelectorAll("th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const column = th.dataset.sort;
+    sortDescending = (column === sortColumn) ? !sortDescending : true;
+    sortColumn = column;
+    renderTable();
+  });
+});
+
+async function loadInventory() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/inventory`);
+    if (!resp.ok) throw new Error(`${resp.status}: ${resp.statusText}`);
+    rows = await resp.json();
+    renderStats(rows);
+    renderTable();
+    el("subtitle").innerHTML = `<span class="live-dot" id="live-dot"></span>Live from ${rows.length} products in data/catalog.json.`;
+    errorBanner.style.display = "none";
+    setLiveDotStale(false);
+  } catch (e) {
+    errorBanner.textContent =
+      "Could not load live inventory data: " + e.message + " -- is the API running (uvicorn src.api:app --port 8000)?";
+    errorBanner.style.display = "block";
+    setLiveDotStale(true);
+  }
+}
+
+loadInventory();
+</script>
+</body>
+</html>

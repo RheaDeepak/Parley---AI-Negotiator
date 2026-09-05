@@ -226,9 +226,18 @@ def _resolve_perks(offer, policy, requested_perks):
     the explicit requirement this guards against ("only one pathway
     touched" bug class from liquidation/risk).
 
-    All-or-nothing: a buyer is eligible for at most one perk by
-    construction (personalization.perk_eligibility()), so there is no
-    meaningful "grant some, decline others" case to arbitrate here.
+    All-or-nothing: every eligible, requested perk is granted or declined
+    TOGETHER, based on whether the offer clears the floor with ALL of
+    their combined cost folded in -- never "grant some, decline others"
+    picked one at a time. Originally justified by a buyer being eligible
+    for at most one perk by construction; Section 2AH (2026-09-05) added
+    a second, independent eligibility path (qty > PERK_LARGE_QTY_THRESHOLD)
+    that can now make a buyer eligible for BOTH free_delivery and
+    extended_warranty simultaneously (an established buyer placing a
+    large order) -- the all-or-nothing behavior itself didn't need to
+    change: `candidates` and `total_cost` above already generalize to N
+    perks with no special-casing, so two simultaneous candidates are
+    still granted or declined together by the same single floor check.
     Returns (granted, declined_for_margin)."""
     eligible_perks = policy.get("eligible_perks", [])
     candidates = [p for p in requested_perks if p in eligible_perks]
