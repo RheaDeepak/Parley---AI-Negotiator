@@ -15,6 +15,13 @@ before it can reach the buyer or the audit log.
 
 ## Architecture
 
+> **For the full architecture writeup** — the floor-price computation,
+> the Risk Agent, perks, failure/rollback modes, the audit trail,
+> multi-merchant support, and the frontend/API layer, all explained with
+> real worked examples and bug histories — see
+> [`ARCHITECTURE.md`](ARCHITECTURE.md). The summary below is a quick
+> reference.
+
 ```
                     ┌───────────────────────────────────────────┐
                     │            negotiation_loop.py             │
