@@ -2999,6 +2999,267 @@ two new test functions) -- zero regressions.
 
 ---
 
+## Section 2AI — Frontend restructure: landing page + persistent nav + 3-step negotiation flow (2026-09-05)
+
+**Pure presentation/navigation change, confirmed with the user before
+implementing**: no negotiation/risk/liquidation/perk/payment LOGIC
+touched -- every API call and data flow is byte-identical to before.
+This is entirely about how existing results are grouped and revealed,
+not what they contain. Zero backend files changed except two stale
+doc-comment paths in `src/api.py` (see below). Full suite unaffected
+throughout (120 passed, 3 skipped, pure-frontend change).
+
+**Chosen approach**: single page, JS-controlled panel show/hide (the
+user's own stated preference, given time constraints) — not three
+separate HTML pages passing state via `negotiation_id`. Faster and
+lower-risk: no new API surface needed, no risk of losing in-memory
+state (`lastNegotiationParams`/`lastRequestedPerks`) across a real page
+navigation.
+
+**1. Landing page** — `frontend/index.html` was rewritten into a short,
+standalone landing page (title, 1-2 sentence intro, a single "Get
+Started" link to `negotiate.html`). Chose "make index.html this" (the
+user's second offered option) over a separate `landing.html`, since
+`index.html` is the default file served for the `frontend/` directory —
+keeping it as the entry point matches ordinary static-hosting
+conventions. The negotiation tool itself moved to a **new file**,
+`frontend/negotiate.html` (see below) — not left in place, since
+`index.html` needed to become the landing page instead. Reuses the same
+`:root` CSS custom properties (`--bg`, `--text`, `--muted`, `--accent`,
+etc.) as every other page — no new color tokens introduced. Deliberately
+has **no** persistent nav (the one page excluded from requirement 2 —
+there's no dashboard/inventory context to jump to yet from a true entry
+point).
+
+**2. Persistent top nav** — every other page (`negotiate.html`,
+`dashboard.html`, `frontend/inventory.html`) already had SOME cross-page
+navigation from earlier sections (2Z, the inventory-dashboard work); this
+pass unified them onto one shared class name, `a.nav-link` (previously
+`negotiate.html`/`index.html` used `a.dashboard-link` for the identical
+CSS rules `dashboard.html`/`inventory.html` already called `nav-link` —
+a naming inconsistency from when those were added separately, not a
+visual difference). All three tool pages now use the same class, same
+position (top-right of the header), same two destinations available from
+each of the other two:
+- `negotiate.html`: View Inventory, View Dashboard.
+- `frontend/inventory.html`: Negotiate (→ `negotiate.html`, not the new
+  landing page — jumping back to a splash screen from a working tool
+  would be worse UX than returning straight to it), View Dashboard.
+- `dashboard.html`: Negotiate (→ `frontend/negotiate.html`), View
+  Inventory.
+
+**3. Three-step negotiation flow**, all inside `negotiate.html`, three
+sibling `<div>` containers (`#step-setup`, `#step-negotiate`,
+`#step-outcome`) toggled by a single `showStep(step)` function
+(`style.display = "block"`/`"none"`, plus `window.scrollTo(0, 0)` on
+every switch) — the SAME `.card` elements the old single-scrolling-page
+`index.html` already had, just grouped into containers instead of one
+continuous scroll:
+- **Step 1** (`#step-setup`): the existing `setup-card` (merchant/
+  product/buyer/qty/budget/perks inputs, Start Negotiation button) —
+  unchanged content.
+- **Step 2** (`#step-negotiate`): `loading-card`, `risk-card`,
+  `rounds-container`, `round-limit-card`, `approval-card` — the
+  negotiation-in-progress cards, including BOTH pause-for-decision cards
+  (per requirement 4 below).
+- **Step 3** (`#step-outcome`): `outcome-card` (which already contains
+  the Perks section, Section 4F), `floor-reveal-card`, `payment-card` —
+  the final screen, nothing below it. A "Start New Negotiation" button
+  was added here (not explicitly requested, but required for the flow to
+  be usable at all — without it there'd be no way back to Step 1 after
+  one run); it calls the existing `resetResultPanels()` and returns to
+  `showStep("setup")`, deliberately leaving the setup form's field values
+  untouched so re-running a similar negotiation doesn't require
+  re-entering everything.
+
+Control-flow changes, all in `negotiate.html`'s `<script>` (no function
+renamed or removed, only where they're called from):
+- `startNegotiation()`: calls `showStep("negotiate")` right after
+  validation passes (before the async `/api/negotiate` call) — the
+  loading spinner and everything that follows now belongs on Step 2, not
+  stacked below the setup form. On a request failure, falls back to
+  `showStep("setup")` rather than stranding the user on an empty Step 2.
+- `onNegotiationRevealed(data)`: `round_limit_reached` and
+  `pending_approval` no longer need to do anything panel-wise (already on
+  Step 2) — only the terminal-outcome `else` branch now also calls
+  `showStep("outcome")` before `renderOutcome(data)`.
+- `resolveApproval()`: `/api/approve` is always terminal (never another
+  pause), so its success path always calls `showStep("outcome")`.
+- `resolveRoundLimitDecision()`: if resuming lands back in
+  `pending_approval` (accepting the round-limit offer can itself trigger
+  the ordinary approval gate — Section 2X), delegates to
+  `onNegotiationRevealed()` and stays on Step 2; only the genuinely
+  terminal branch calls `showStep("outcome")`.
+
+**4. Both pause points stay on Step 2, not a 4th page** — confirmed by
+construction: `round-limit-card` and `approval-card` are both inside
+`#step-negotiate`, and neither code path that shows them
+(`onNegotiationRevealed()`'s `round_limit_reached`/`pending_approval`
+branches) calls `showStep()` at all, since Step 2 is already the active
+panel by the time either can fire. Live-verified directly (calling
+`onNegotiationRevealed()` with synthetic `round_limit_reached` and
+`pending_approval` payloads): `#step-negotiate` stayed `display: block`,
+`#step-outcome` stayed `display: none`, and the respective card rendered
+correctly in both cases.
+
+**Live-verified end to end** (real API, scripted buyer + rules merchant
+for an instant run): landing page loads with no nav and a working "Get
+Started" link; Step 1 renders alone (Steps 2/3 absent from the page
+text); submitting moves to Step 2, which resolves to Step 3 showing
+`Outcome COMPLETED`, the floor reveal, and Payment Details together,
+`Step 1`'s setup card absent from the page text; "Start New Negotiation"
+returns to Step 1 with the merchant/buyer selections preserved; the nav
+links on `negotiate.html`, `dashboard.html`, and `frontend/inventory.html`
+all resolved to the correct targets.
+
+**Styling**: no new design language — reused every existing CSS custom
+property and `.card`/`.badge`/`.hint`/button class as-is. The only new
+rules are the panel-visibility toggles (`#step-negotiate, #step-outcome
+{ display: none; }`) and the landing page's own minimal, token-reusing
+layout. No animations added for the step transitions (plain instant
+`display` swap, per the user's explicit "no animations needed, prioritize
+correctness" instruction) — the existing round-by-round reveal fade-in
+(`@keyframes fadein`, Section 2A-era) was untouched.
+
+**Non-frontend changes**: two stale doc-comment path references in
+`src/api.py` (`frontend/index.html` → `frontend/negotiate.html`) —
+comments only, zero behavioral change, confirmed via the full suite
+staying green.
+
+---
+
+## Section 2AJ — Raw audit trail on the outcome page (2026-09-05)
+
+**The question that prompted this**: did the frontend already expose the
+raw audit log entries anywhere, or only a curated/formatted view of
+them? Checked before writing anything: every card the frontend already
+rendered (`rounds`, `risk_review`, `perk_review`, `granted_perks`/
+`declined_perks`, `payment`) is a CURATED subset -- `_extract_rounds_and_
+risk()` and the `perk_review = next(...)` lookup in `src/api.py` both
+filter/reshape the collected entries before returning them; no endpoint
+ever returned the full, unfiltered JSONL entries for a negotiation. So:
+add one.
+
+**`GET /api/audit-log?negotiation_id=...`** (new, `src/api.py`) --
+read-only, no negotiation/pricing/guardrail logic. Reuses
+`src.dashboard.load_entries(DEFAULT_LOG_PATHS)` -- the EXACT SAME reader
+`GET /api/dashboard-data` already calls, over the same two files
+(`audits/negotiation.log`, `audits/dashboard_seed.log`) -- filtered down
+to entries whose `negotiation_id` matches, returned as-is (`{negotiation_id,
+count, entries}`). No new log-parsing logic; this can never disagree with
+what the dashboard's own aggregation considers "the audit trail" for the
+same reason `GET /api/floor-preview` can never disagree with the real
+floor (Section 2AB) -- one function, every consumer.
+
+**Frontend** (`frontend/negotiate.html`): a new "Raw Audit Trail" card on
+Step 3 (the outcome page), placed after Payment Details and before "Start
+New Negotiation" -- the last, most-technical layer of the final screen.
+A collapsed-by-default `<details>` (reusing the existing `.floor-breakdown`
+class for the same chevron/summary interaction "How is this calculated?"
+already uses -- no new collapsible pattern introduced), containing a
+`<pre>` with `JSON.stringify(entries, null, 2)` -- deliberately plain,
+unstyled JSON, per the request: this proves the data is real and
+complete, it isn't meant to be pretty. `renderAuditTrail(data)` is called
+from `renderOutcome()` (alongside the existing `renderPaymentCard()`/
+`renderFloorReveal()` calls), fetching by `data.negotiation_id` -- present
+on every terminal outcome already, no new field needed from the backend
+response shape.
+
+**Live-verified** with a real completed negotiation: `GET /api/audit-log`
+returned the correct 5 raw entries (`offer`, `accept`, `inventory_hold`,
+`payment_initiated`, `payment_completed`), all sharing the real
+`negotiation_id`, matching a real full JSONL entry's actual schema
+(`timestamp`, `decision_id`, `agent`, `action`, `offer`, `rationale`,
+`evidence_paths`, `decision_hash`, `provenance_sha`, `negotiation_id`,
+`product_name`, `list_price`, `merchant_id`) -- not a reshaped summary.
+Confirmed in the browser: the card appears on Step 3, collapsed by
+default, and expands to the same JSON.
+
+Full suite: 120 passed, 3 skipped, unchanged (one single flaky failure
+during verification -- `test_layer_2_cannot_counter_past_the_round_cap_
+when_the_final_offer_already_clears_the_floor` -- reproduced as an
+isolated one-off; passed on its own and on three subsequent full-suite
+re-runs, unrelated to this section's changes, which touched neither
+`merchant_agent.py` nor that test file).
+
+---
+
+## Section 2AK — Fit each negotiation-flow panel within one viewport, no page scroll (2026-09-05)
+
+**Pure CSS sizing/spacing change, `frontend/negotiate.html` only** -- no
+content removed, no layout/control-flow logic touched (the three
+`showStep()` panels from Section 2AI are unchanged in structure and
+behavior). Goal: Steps 1-3 each fit within a ~1366x768 viewport without
+the page needing to scroll, scaling cleanly to larger screens.
+
+**Baseline measured before changing anything** (1366x768, real browser
+viewport, real rendered content): Step 1 (setup, all fields/hints
+visible) overflowed by 187px; Step 3 (outcome, one real completed
+negotiation) overflowed by 91px; Step 2 with a synthetic 8-round
+transcript overflowed by 409px (rounds-container alone measured 888px
+tall). These numbers set the actual tightening budget, not a guess.
+
+**Page shell**: `body` is now a fixed-height (`height: 100vh`) flex
+column with `overflow: hidden` -- `header` and `.error-banner` are
+non-shrinking flex items (`flex: 0 0 auto`), and whichever step `<div>`
+is active (`#step-setup` / `#step-negotiate` / `#step-outcome`) is a
+`flex: 1 1 auto; min-height: 0;` item that fills the remaining space.
+This is what keeps the header/nav genuinely fixed while a step's content
+scrolls, rather than the whole page scrolling past the header. Each step
+div also carries its own `overflow-y: auto` -- a FALLBACK, not the
+primary mechanism: in the normal case (after the spacing cuts below)
+nothing needs it, but if some edge-case content (a very long rationale
+string, a large expanded raw-audit-trail JSON dump) ever runs long, nothing
+is clipped -- that step's own content scrolls in place instead of
+silently losing information.
+
+**Spacing tightened globally** (not per-step -- these are the shared
+rules every card/field/button already used): `body` padding 32px ->
+18px/28px; header margin-bottom 24px -> 12px; `.card` padding 20px ->
+12px/16px, margin-bottom 18px -> 10px; `.card h2` margin 14px -> 6px;
+`.field` margin-bottom 14px -> 6px; `.field label` margin-bottom 5px ->
+3px; input/select padding 9px -> 7px; `.row` gap 14px -> 10px; `.hint`/
+`.budget-warning` padding and margins each cut by ~2px; button padding
+10px -> 8px; and proportionally smaller cuts across `#risk-card`,
+`#approval-card`, `#round-limit-card`, `#outcome-perks`, and
+`#payment-card`'s internal margins. No font sizes changed anywhere --
+every cut was padding/margin/gap, per the request's own suggested lever.
+
+**`#rounds-container`** -- the one section EXPECTED to scroll internally
+once a negotiation has many rounds, exactly as requested: `max-height:
+40vh; overflow-y: auto;` (vh, not a fixed px number, so it scales with
+viewport -- a taller screen shows more rounds before this engages, per
+"works fine scaling up on larger screens"). `.round-entry` margin-bottom
+also cut 10px -> 6px, so more rounds fit before the internal scroll is
+even needed.
+
+**Live-verified at 1366x768** (real browser viewport, real API calls
+where practical, synthetic DOM content via the page's own render
+functions for the round-count scenarios that need many rounds on
+demand):
+- Step 1 (all fields/hints populated): fits exactly -- `scrollHeight ==
+  clientHeight` on `#step-setup`, zero outer page scroll.
+- Step 3, real COMPLETED negotiation with a granted perk shown: fits
+  exactly, zero outer scroll.
+- Step 3, REJECTED outcome: fits exactly, zero outer scroll.
+- Step 2, Risk Agent card + 3 rounds: fits exactly, zero scroll anywhere.
+- Step 2, Risk Agent card + round-limit-card + 5 rounds: fits exactly,
+  zero scroll anywhere.
+- Step 2, 9 rounds: `#step-negotiate` itself still fits with no scroll
+  (`scrollHeight == clientHeight`), while `#rounds-container` correctly
+  triggers its own internal scroll (942px of content in a 305px/40vh
+  box) -- header confirmed still on-screen (`getBoundingClientRect().top
+  >= 0`) throughout, page-level `scrollHeight` still equal to
+  `innerHeight` (no outer scroll introduced by the many-round case).
+- 1920x1080: Step 1 renders correctly, form compact at the top with
+  unused space below (expected -- the flex step panel fills leftover
+  viewport height; no stretching or breakage).
+
+Full suite: 120 passed, 3 skipped, unchanged (pure CSS, no Python
+touched).
+
+---
+
 ## Section 3 — State machine
 
 ### States

@@ -3,34 +3,49 @@
 <head>
 <meta charset="utf-8">
 <title>Parley Inventory Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Section 2AQ (2026-09-05): re-palette to match index.html's redesign
+     (Section 2AP) -- warm cream page, WHITE cards. See negotiate.html's
+     :root comment (Section 2AQ) for the full rationale; same token set
+     here. */
   :root {
-    --bg: #f6f7f9;
-    --card-bg: #ffffff;
-    --text: #1a1d23;
-    --muted: #6b7280;
-    --border: #e5e7eb;
-    --accent: #2563eb;
-    --accent-bg: #eff6ff;
+    --bg: #F8F5EC;
+    --text: #14140F;
+    --muted: #6B685D;
+    --border: #E4E0D2;
+    --card-bg: #FFFFFF;
+    --card-text: #14140F;
+    --card-muted: #6B685D;
+    --card-border: #E4E0D2;
+    --btn-bg: #14140F;
+    --btn-text: #F8F5EC;
+    --accent: #C6F135;
+    --accent-ink: #2B3300;
     --green-bg: #dcfce7; --green-text: #166534;
     --red-bg: #fee2e2; --red-text: #991b1b;
     --amber-bg: #fef3c7; --amber-text: #92400e;
-    --gray-bg: #e5e7eb; --gray-text: #374151;
+    --gray-bg: #EDEAE0; --gray-text: #6B685D;
+    --font-heading: "DM Serif Display", Georgia, serif;
+    --font-body: "Inter", -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 32px; background: var(--bg); color: var(--text);
-    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-body);
   }
   header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
-  h1 { margin: 0; font-size: 22px; }
+  h1 { margin: 0; font-size: 22px; font-family: var(--font-heading); font-weight: 400; }
   .subtitle { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
   .nav-links { display: flex; gap: 8px; }
   a.nav-link {
-    color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600;
-    border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
+    color: var(--btn-text); text-decoration: none; font-size: 13px; font-weight: 600;
+    border: none; padding: 7px 14px; border-radius: 9px; background: var(--btn-bg);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
-  a.nav-link:hover { border-color: var(--accent); }
+  a.nav-link:hover { box-shadow: 0 6px 16px rgba(20,20,15,0.18); transform: translateY(-1px); }
   .live-dot {
     display: inline-block; width: 7px; height: 7px; border-radius: 50%;
     background: var(--green-text); margin-right: 5px; vertical-align: 1px;
@@ -43,26 +58,39 @@
     gap: 14px; margin-bottom: 24px;
   }
   .stat-card {
-    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px 18px;
+    background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
+    padding: 16px 18px; color: var(--card-text);
   }
-  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-label { font-size: 12px; color: var(--card-muted); text-transform: uppercase; letter-spacing: 0.03em; }
   .stat-value { font-size: 24px; font-weight: 600; margin-top: 6px; }
   .table-scroll {
-    overflow-x: auto; background: var(--card-bg);
-    border: 1px solid var(--border); border-radius: 10px;
+    overflow-x: auto; background: var(--card-bg); color: var(--card-text);
+    border: 1px solid var(--card-border); border-radius: 12px;
   }
   table { width: 100%; min-width: 720px; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
-  th { background: #fafbfc; font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--card-border); font-size: 14px; }
+  /* Was a white wash to lighten a dark header row (Section 2AL); flips
+     to a dark wash now that the table is white again -- see
+     dashboard.html's identical comment. */
+  th { background: rgba(20,20,15,0.03); font-size: 12px; text-transform: uppercase; color: var(--card-muted); letter-spacing: 0.03em; }
   th.sortable { cursor: pointer; user-select: none; }
-  th.sortable:hover { color: var(--text); }
-  th.sorted { color: var(--accent); }
+  th.sortable:hover { color: var(--card-text); }
+  /* Lime is a fill color, not a text color (~1.2:1 contrast on a light
+     background -- see index.html/negotiate.html's own notes on this) --
+     the active sort column gets a lime underline instead of lime text. */
+  th.sorted { color: var(--card-text); box-shadow: inset 0 -2px 0 var(--accent); }
   tr:last-child td { border-bottom: none; }
+  /* This row's background flips light (amber) as a "needs attention"
+     pop against the otherwise-white table -- text stays dark to match,
+     same "white card + colored badge/wash" restraint used elsewhere,
+     just inverted here since amber genuinely needs a full-row wash to
+     read as "eligible" at a glance while scanning many rows. */
   tr.row-liquidation { background: var(--amber-bg); }
+  tr.row-liquidation td { color: #14140F; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); }
-  td.empty { text-align: center; color: var(--muted); padding: 24px; }
+  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--card-muted); }
+  tr.row-liquidation td.mono { color: #5a4a1f; }
+  td.empty { text-align: center; color: var(--card-muted); padding: 24px; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .badge-liquidation { background: var(--amber-text); color: var(--amber-bg); }
   .badge-normal { background: var(--gray-bg); color: var(--gray-text); }
@@ -71,17 +99,6 @@
   .error-banner {
     background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 10px 14px;
     font-size: 13px; margin-bottom: 20px; display: none;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16181d; --card-bg: #1e2128; --text: #e6e8eb; --muted: #9aa1ac; --border: #2b2f38;
-      --accent: #3b82f6; --accent-bg: #16233d;
-      --green-bg: #113321; --green-text: #4ade80;
-      --red-bg: #3a1414; --red-text: #f87171;
-      --amber-bg: #3a2c0f; --amber-text: #fbbf24;
-      --gray-bg: #2b2f38; --gray-text: #b8bec9;
-    }
-    th { background: #1a1d23; }
   }
 </style>
 </head>
@@ -92,7 +109,7 @@
       <p class="subtitle" id="subtitle"><span class="live-dot" id="live-dot"></span>Loading…</p>
     </div>
     <div class="nav-links">
-      <a class="nav-link" href="index.html">Negotiate</a>
+      <a class="nav-link" href="negotiate.html">Negotiate</a>
       <a class="nav-link" href="../dashboard.html">View Dashboard &rarr;</a>
     </div>
   </header>

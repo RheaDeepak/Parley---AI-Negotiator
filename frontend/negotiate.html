@@ -3,104 +3,219 @@
 <head>
 <meta charset="utf-8">
 <title>Parley Negotiation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Section 2AQ (2026-09-05): re-palette to match index.html's redesign
+     (Section 2AP) -- warm cream page, WHITE cards (a reversal of Section
+     2AL's dark #111111 cards), near-black text, one lime accent used
+     sparingly. Because the page and cards are now the SAME polarity
+     (both light), --card-text/--card-muted/--card-border simply equal
+     --text/--muted/--border -- kept as separate custom properties (not
+     collapsed into one name) so every existing "var(--card-*)" reference
+     throughout this file keeps working unchanged; only their VALUES
+     moved. Buttons flip dark-bg/light-text (Section 2AL's white buttons
+     would now be invisible sitting on white cards) -- matching
+     index.html's dark "Launch Negotiator" pill exactly. */
   :root {
-    --bg: #f6f7f9;
-    --card-bg: #ffffff;
-    --text: #1a1d23;
-    --muted: #6b7280;
-    --border: #e5e7eb;
-    --accent: #2563eb;
-    --accent-bg: #eff6ff;
+    --bg: #F8F5EC;
+    --text: #14140F;
+    --muted: #6B685D;
+    --border: #E4E0D2;
+    --card-bg: #FFFFFF;
+    --card-text: #14140F;
+    --card-muted: #6B685D;
+    --card-border: #E4E0D2;
+    --btn-bg: #14140F;
+    --btn-text: #F8F5EC;
+    --accent: #C6F135;
+    --accent-ink: #2B3300;
+    --accent-bg: #F3FBD8;
     --green-bg: #dcfce7; --green-text: #166534;
     --red-bg: #fee2e2; --red-text: #991b1b;
     --amber-bg: #fef3c7; --amber-text: #92400e;
-    --gray-bg: #e5e7eb; --gray-text: #374151;
+    --gray-bg: #EDEAE0; --gray-text: #6B685D;
+    --font-heading: "DM Serif Display", Georgia, serif;
+    --font-body: "Inter", -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
+  /* Section 2AM (2026-09-05): html carries the page background across
+     the FULL viewport width -- body itself is width-constrained
+     (max-width, centered below) for readability, so if body also owned
+     the background, it painted only a narrow centered column with blank
+     space on either side on any screen wider than ~760px+padding. html
+     always fills the viewport regardless of body's own width, so it's
+     the right place for a full-bleed background with a centered content
+     column sitting on top of it. */
+  html { height: 100%; background: var(--bg); }
+  /* Section 2AK (2026-09-05): fixed-height page shell so the header/nav
+     never scrolls away -- body fills the viewport exactly (100vh) and is
+     a flex column; header/error-banner are fixed-size flex items, and
+     whichever step panel is active fills the rest (see
+     "#step-setup, #step-negotiate, #step-outcome" below) with its own
+     overflow-y: auto as a fallback if content ever runs long, so nothing
+     is ever clipped -- it just scrolls in place instead of scrolling the
+     whole page. Padding/margins throughout this file were also tightened
+     (20px/18px/14px card and field spacing -> smaller values below) so
+     that, in the normal case, no scrolling is needed at all on a
+     ~1366x768 laptop screen; the internal overflow-y: auto is a safety
+     net, not the primary mechanism. */
+  /* Section 2AT (2026-09-05): widened from "78vw, cap 1220" to "90vw,
+     cap 1280" -- the 1220 cap read as noticeably zoomed-out/small on
+     desktop widths, with more empty side margin than intended. Still
+     centered, still the same flex-column/100vh shell (see Section 2AK
+     below) -- width and vertical rhythm are independent knobs. Font
+     sizes/padding throughout this file were bumped up a notch alongside
+     this (see each rule below) so the extra width reads as "more
+     substantial", not just "more empty space inside a bigger box". */
   body {
-    margin: 0; padding: 32px; background: var(--bg); color: var(--text);
-    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    max-width: 760px; margin-left: auto; margin-right: auto;
+    margin: 0 auto; padding: 32px 36px 22px 36px; background: var(--bg); color: var(--text);
+    font-family: var(--font-body);
+    width: min(90vw, 1280px);
+    height: 100vh; overflow: hidden; display: flex; flex-direction: column;
   }
-  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; flex-wrap: wrap; gap: 8px; }
-  h1 { margin: 0; font-size: 22px; }
-  .subtitle { color: var(--muted); font-size: 13px; margin: 4px 0 0 0; }
+  header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+    flex-wrap: wrap; gap: 12px; flex: 0 0 auto;
+  }
+  h1 { margin: 0; font-size: 34px; font-family: var(--font-heading); font-weight: 400; letter-spacing: -0.01em; }
+  .subtitle { color: var(--muted); font-size: 14px; margin: 6px 0 0 0; }
   .nav-links { display: flex; gap: 8px; }
-  a.dashboard-link {
-    color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600;
-    border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
+  a.nav-link {
+    color: var(--btn-text); text-decoration: none; font-size: 14px; font-weight: 600;
+    border: none; padding: 10px 18px; border-radius: 8px; background: var(--btn-bg);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
-  a.dashboard-link:hover { border-color: var(--accent); }
+  a.nav-link:hover { box-shadow: 0 6px 16px rgba(20,20,15,0.18); transform: translateY(-1px); }
+
+  /* Each step panel takes whatever vertical space is left after the
+     header -- overflow-y: auto is the fallback if it doesn't fit, not
+     the intended everyday behavior (see comment on `body` above). */
+  #step-setup, #step-negotiate, #step-outcome {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  }
 
   .card {
-    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
-    padding: 20px; margin-bottom: 18px;
+    background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px;
+    padding: 20px 24px; margin-bottom: 16px; color: var(--card-text);
   }
-  .card h2 { font-size: 15px; margin: 0 0 14px 0; }
-  .field { margin-bottom: 14px; }
-  .field label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 5px; }
-  .field select, .field input {
-    width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px;
-    font-size: 14px; background: var(--card-bg); color: var(--text);
+  .card h2 { font-size: 20px; margin: 0 0 12px 0; font-family: var(--font-heading); font-weight: 400; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 13px; color: var(--card-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  /* :not([type="checkbox"]) matters -- "input" here also matches the two
+     perk checkboxes (they live inside a .field too), and without this
+     exclusion they inherited this rule's height/padding/border and
+     rendered as comically oversized 42px squares instead of normal
+     checkboxes. The spec asked to leave the checkboxes alone. */
+  .field select, .field input:not([type="checkbox"]) {
+    width: 100%; padding: 10px 14px; border: 1px solid var(--card-border); border-radius: 8px;
+    font-size: 15px; background: var(--card-bg); color: var(--card-text); font-family: var(--font-body);
+    height: 44px; transition: border-color 0.15s ease;
   }
+  /* Focus: a subtle dark ring, not a glow -- explicitly requested. */
+  .field select:focus, .field input:not([type="checkbox"]):focus {
+    outline: none; border-color: var(--card-text); box-shadow: 0 0 0 1px var(--card-text);
+  }
+  /* The disabled Product field (before a merchant is picked) and the
+     disabled Starting Offer field (AI buyer mode) both hit this -- one
+     rule, visually distinct from an active input but still on-palette,
+     not a jarring gray-out. */
+  .field select:disabled, .field input:not([type="checkbox"]):disabled {
+    background: var(--gray-bg); color: var(--card-muted); cursor: not-allowed;
+  }
+  /* The checkbox labels are also plain <label> elements inside a .field,
+     so they'd otherwise inherit .field label's margin-bottom/uppercase/
+     letter-spacing meant for FIELD labels, not per-option labels --
+     .radio-group label below already resets the visual properties it
+     cares about, but not margin, so it still stacked an extra 6px under
+     each checkbox on top of .radio-group's own gap. Zero it here. */
+  .field .radio-group label { margin-bottom: 0; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .hint {
-    font-size: 13px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px;
-    background: var(--accent-bg); color: var(--text); min-height: 18px;
+    font-size: 14px; padding: 11px 14px; border: 1px solid var(--card-border); border-radius: 8px;
+    background: var(--accent-bg); color: var(--card-text); min-height: 16px;
   }
-  .hint .floor-number { font-weight: 700; font-size: 16px; color: var(--accent); }
-  .hint .floor-evidence { color: var(--muted); }
-  .hint-secondary { margin-top: 8px; color: var(--muted); }
-  .hint-secondary .min-qty-number { font-weight: 700; color: var(--text); }
+  /* Lime as a text color is nearly illegible on a light background
+     (~1.2:1 contrast) -- it only ever works as a FILL with dark text on
+     top, same rule learned for index.html's accent usage. A "key
+     highlight" number gets a small lime chip instead of raw colored
+     text. */
+  .hint .floor-number {
+    font-weight: 700; font-size: 15px; color: var(--accent-ink); background: var(--accent);
+    padding: 1px 8px; border-radius: 5px; display: inline-block;
+  }
+  .hint .floor-evidence { color: var(--card-muted); }
+  .hint-secondary { margin-top: 6px; color: var(--card-muted); }
+  .hint-secondary .min-qty-number { font-weight: 700; color: var(--card-text); }
   .floor-breakdown { margin-top: 8px; font-size: 12px; }
-  .floor-breakdown summary { cursor: pointer; color: var(--accent); font-weight: 600; user-select: none; list-style: none; }
+  .floor-breakdown summary {
+    cursor: pointer; color: var(--card-text); font-weight: 600; user-select: none; list-style: none;
+    border-bottom: 1px solid var(--card-border); display: inline-block; padding-bottom: 1px;
+  }
   .floor-breakdown summary::-webkit-details-marker { display: none; }
   .floor-breakdown summary::before { content: "▸ "; }
   .floor-breakdown[open] summary::before { content: "▾ "; }
-  .floor-breakdown summary:hover { text-decoration: underline; }
-  #floor-breakdown-body { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .floor-breakdown summary:hover { border-bottom-color: var(--card-text); }
+  #floor-breakdown-body { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
   .floor-candidate {
-    border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; background: var(--card-bg);
+    border: 1px solid var(--card-border); border-radius: 7px; padding: 7px 9px; background: var(--card-bg);
   }
-  .floor-candidate.winner { border-color: var(--green-text); background: var(--green-bg); }
+  .floor-candidate.winner { border-color: var(--green-text); background: var(--green-bg); color: var(--green-text); }
   .floor-candidate .fc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .floor-candidate .fc-label { font-weight: 600; }
   .floor-candidate .fc-value { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
-  .floor-candidate .fc-detail { color: var(--muted); margin-top: 3px; }
+  .floor-candidate .fc-detail { color: var(--card-muted); margin-top: 3px; }
+  /* .winner's own background flips light (green-bg) while every sibling
+     candidate stays on the dark card-bg -- .fc-detail's card-muted (a
+     LIGHT gray, meant for dark backgrounds) would be nearly illegible on
+     that light green, so it needs its own override here, not just the
+     inherited --green-text from .floor-candidate.winner above (equal
+     specificity, and .fc-detail's own rule above would otherwise win). */
+  .floor-candidate.winner .fc-detail { color: var(--green-text); }
   .floor-candidate .fc-winner-tag {
     display: inline-block; margin-left: 6px; font-size: 10px; text-transform: uppercase;
     letter-spacing: 0.03em; color: var(--green-text); font-weight: 700;
   }
   .budget-warning {
-    background: var(--red-bg); color: var(--red-text); border-radius: 7px; padding: 9px 10px;
+    background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 10px 12px;
     font-size: 13px; margin-top: 8px; font-weight: 600;
   }
-  .radio-group { display: flex; flex-direction: column; gap: 6px; }
-  .radio-group label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; text-transform: none; color: var(--text); }
+  .radio-group { display: flex; flex-direction: column; gap: 9px; }
+  .radio-group label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; text-transform: none; color: var(--card-text); }
   .radio-group input { width: auto; }
   button {
-    font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 8px;
-    border: none; cursor: pointer;
+    font-size: 15px; font-weight: 600; padding: 13px 24px; border-radius: 8px;
+    border: none; cursor: pointer; background: var(--btn-bg); color: var(--btn-text); font-family: var(--font-body);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
+  button:hover:not(:disabled) { box-shadow: 0 6px 16px rgba(20,20,15,0.18); transform: translateY(-1px); }
+  button:active:not(:disabled) { transform: translateY(0); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  button.primary { background: var(--accent); color: #fff; }
-  button.approve { background: var(--green-text); color: #fff; margin-right: 10px; }
-  button.decline { background: var(--red-text); color: #fff; }
+  button.approve { margin-right: 10px; }
+  /* Button bg flipped dark (Section 2AQ) -- spinner ring flips light to
+     match, same as it would look on index.html's dark CTA. */
   .spinner {
     display: inline-block; width: 13px; height: 13px; margin-right: 8px; vertical-align: -2px;
-    border: 2px solid rgba(255,255,255,0.45); border-top-color: #fff; border-radius: 50%;
+    border: 2px solid rgba(248,245,236,0.35); border-top-color: var(--btn-text); border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .spinner-lg { width: 22px; height: 22px; border-width: 3px; margin-right: 0; border-color: rgba(37,99,235,0.25); border-top-color: var(--accent); }
+  .spinner-lg { width: 22px; height: 22px; border-width: 3px; margin-right: 0; border-color: rgba(198,241,53,0.3); border-top-color: var(--accent-ink); }
+
+  /* Section 2AI (2026-09-05): three distinct step panels, only one shown
+     at a time via showStep() -- pure navigation/grouping change, no
+     negotiation/risk/perk/payment logic touched. Each panel still just
+     contains the SAME .card elements this page already had; they're
+     grouped into containers instead of one continuous scroll. */
+  #step-negotiate, #step-outcome { display: none; }
 
   #loading-card {
     display: none; border: 2px solid var(--accent); background: var(--accent-bg);
   }
   #loading-card .loading-row { display: flex; align-items: center; gap: 14px; }
   #loading-card .loading-title { font-size: 15px; font-weight: 700; }
-  #loading-card .loading-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  #loading-card .loading-sub { font-size: 13px; color: var(--card-muted); margin-top: 3px; }
 
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .badge-none { background: var(--gray-bg); color: var(--gray-text); }
@@ -111,83 +226,105 @@
   .badge-rollback { background: var(--amber-bg); color: var(--amber-text); }
   .badge-other { background: var(--gray-bg); color: var(--gray-text); }
 
-  #risk-card { border: 2px solid var(--amber-text); background: var(--amber-bg); display: none; }
-  #risk-card.risk-none { border-color: var(--gray-text); background: var(--gray-bg); }
-  #risk-card.risk-high { border-color: var(--red-text); background: var(--red-bg); }
+  /* Cards don't wash their own background with the risk-tier color
+     (amber/gray/red) -- under Section 2AL's dark cards that would have
+     collided outright with --bg; under this palette (Section 2AQ) it's
+     no longer a collision (cards are white again), but the restrained
+     "white card + colored border + badge" treatment is kept anyway, to
+     match index.html's own preference for subtle borders over full
+     color washes. Every risk-card variant stays on the standard white
+     --card-bg; only the border color carries the risk-tier signal. */
+  #risk-card { border: 2px solid var(--amber-text); background: var(--card-bg); display: none; }
+  #risk-card.risk-none { border-color: var(--gray-text); }
+  #risk-card.risk-high { border-color: var(--red-text); }
   #risk-card h2 { display: flex; align-items: center; gap: 10px; }
-  #risk-card ul { margin: 8px 0 0 0; padding-left: 20px; font-size: 13px; }
-  #risk-card .consequences { margin-top: 10px; font-size: 13px; display: flex; gap: 18px; flex-wrap: wrap; }
-  #risk-card .consequences b { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+  #risk-card ul { margin: 6px 0 0 0; padding-left: 20px; font-size: 13px; }
+  #risk-card .consequences { margin-top: 6px; font-size: 13px; display: flex; gap: 18px; flex-wrap: wrap; }
+  #risk-card .consequences b { display: block; font-size: 11px; color: var(--card-muted); text-transform: uppercase; font-weight: 600; }
 
-  #rounds-container { display: none; }
+  /* Section 2AK: the one section that's EXPECTED to scroll internally
+     when there are many rounds -- capped height + its own overflow-y,
+     independent of the step-panel-level fallback scroll above. Scales
+     with viewport (vh) rather than a fixed px number, per "works fine
+     scaling up on larger screens" -- a taller viewport shows more rounds
+     before this kicks in. */
+  #rounds-container { display: none; max-height: 40vh; overflow-y: auto; }
   .round-entry {
-    display: flex; margin-bottom: 10px; opacity: 0; animation: fadein 0.3s ease forwards;
+    display: flex; margin-bottom: 6px; opacity: 0; animation: fadein 0.3s ease forwards;
   }
   @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .round-entry.buyer { justify-content: flex-start; }
   .round-entry.merchant { justify-content: flex-end; }
   .bubble {
-    max-width: 78%; padding: 10px 14px; border-radius: 12px; font-size: 13px; border: 1px solid var(--border);
+    max-width: 78%; padding: 10px 14px; border-radius: 12px; font-size: 13px; border: 1px solid var(--card-border);
   }
   .round-entry.buyer .bubble { background: var(--accent-bg); border-bottom-left-radius: 3px; }
   .round-entry.merchant .bubble { background: var(--card-bg); border-bottom-right-radius: 3px; }
-  .bubble .who { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .bubble .who { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--card-muted); margin-bottom: 3px; }
   .bubble .price { font-size: 15px; font-weight: 700; }
-  .bubble .rationale { margin-top: 4px; color: var(--muted); font-size: 12px; }
+  .bubble .rationale { margin-top: 4px; color: var(--card-muted); font-size: 12px; }
 
   #approval-card { display: none; }
-  #approval-card .summary { font-size: 14px; margin-bottom: 6px; }
-  #approval-card .reason { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  #approval-card .summary { font-size: 14px; margin-bottom: 5px; }
+  #approval-card .reason { font-size: 12px; color: var(--card-muted); margin-bottom: 8px; }
 
   /* Deliberately distinct from #approval-card (plain border) -- amber,
      matching risk-card's "needs attention" treatment -- so a round-limit
      decision and a human-approval decision never read as the same card
-     at a glance, even though both reuse the .approve/.decline buttons. */
-  #round-limit-card { display: none; border: 2px solid var(--amber-text); background: var(--amber-bg); }
-  #round-limit-card .summary { font-size: 14px; margin-bottom: 6px; font-weight: 600; }
-  #round-limit-card .reason { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+     at a glance, even though both reuse the .approve/.decline buttons.
+     Background stays the standard white --card-bg -- see #risk-card
+     comment above for why (subtle border over full color wash). */
+  #round-limit-card { display: none; border: 2px solid var(--amber-text); background: var(--card-bg); }
+  #round-limit-card .summary { font-size: 14px; margin-bottom: 5px; font-weight: 600; }
+  #round-limit-card .reason { font-size: 12px; color: var(--card-muted); margin-bottom: 8px; }
+
+  /* Section 2AS: shown once there's nothing left to reveal (or an
+     approval/round-limit decision has resolved) -- the only way from
+     here to Step 3 is the explicit button, never automatic. */
+  #continue-card { display: none; }
+  #continue-card h2 { margin-bottom: 12px; }
 
   #outcome-card { display: none; }
-  #outcome-card .price-line { font-size: 20px; font-weight: 700; margin: 10px 0 4px 0; }
-  #outcome-card .detail-line { font-size: 13px; color: var(--muted); }
+  #outcome-card .price-line { font-size: 20px; font-weight: 700; margin: 6px 0 3px 0; }
+  #outcome-card .detail-line { font-size: 13px; color: var(--card-muted); }
   #outcome-card .detail-line code { font-family: ui-monospace, Consolas, monospace; }
   #outcome-perks h3 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted);
-    margin: 16px 0 8px 0; padding-top: 12px; border-top: 1px solid var(--border);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--card-muted);
+    margin: 10px 0 6px 0; padding-top: 8px; border-top: 1px solid var(--card-border);
   }
   #outcome-perks .perk-row { font-size: 13px; padding: 3px 0; }
   #outcome-perks .perk-mark { font-weight: 700; display: inline-block; width: 14px; }
   #outcome-perks .perk-row.granted .perk-mark { color: var(--green-text); }
   #outcome-perks .perk-row.declined .perk-mark { color: var(--red-text); }
-  #outcome-perks .perk-reason { color: var(--muted); }
+  #outcome-perks .perk-reason { color: var(--card-muted); }
 
   #floor-reveal-card { display: none; }
 
+  /* Section 2AJ: plain, unstyled JSON on purpose -- this is about
+     proving the underlying data is real and complete, not about making
+     it pretty. Only enough CSS to keep it from breaking page layout
+     (wrap/scroll) and to reuse the existing .floor-breakdown
+     collapsible/chevron styling instead of introducing a new one. */
+  #audit-trail-card { display: none; }
+  #audit-trail-body {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px; white-space: pre-wrap;
+    word-break: break-word; overflow-x: auto; margin: 8px 0 0 0;
+  }
+
   #payment-card { display: none; }
-  #payment-card .payment-status { font-size: 16px; font-weight: 700; margin: 2px 0 14px 0; }
+  #payment-card .payment-status { font-size: 16px; font-weight: 700; margin: 2px 0 8px 0; }
   #payment-card .payment-status.success { color: var(--green-text); }
   #payment-card .payment-status.failed { color: var(--red-text); }
   #payment-card .payment-status.declined { color: var(--gray-text); }
-  #payment-card .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+  #payment-card .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
   #payment-card .kv-grid .kv { font-size: 13px; }
-  #payment-card .kv-grid .kv label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px; }
+  #payment-card .kv-grid .kv label { display: block; font-size: 11px; color: var(--card-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 2px; }
   #payment-card .kv-grid .kv .val { font-weight: 600; }
   #payment-card .kv-grid .kv .val code { font-family: ui-monospace, Consolas, monospace; font-weight: 400; }
 
   .error-banner {
-    background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 10px 14px;
-    font-size: 13px; margin-bottom: 14px; display: none;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16181d; --card-bg: #1e2128; --text: #e6e8eb; --muted: #9aa1ac; --border: #2b2f38;
-      --accent: #3b82f6; --accent-bg: #16233d;
-      --green-bg: #113321; --green-text: #4ade80;
-      --red-bg: #3a1414; --red-text: #f87171;
-      --amber-bg: #3a2c0f; --amber-text: #fbbf24;
-      --gray-bg: #2b2f38; --gray-text: #b8bec9;
-    }
+    background: var(--red-bg); color: var(--red-text); border-radius: 8px; padding: 8px 12px;
+    font-size: 13px; margin-bottom: 8px; display: none; flex: 0 0 auto;
   }
 </style>
 </head>
@@ -198,137 +335,171 @@
       <p class="subtitle">Pick a merchant, product, and buyer, then negotiate against the real Parley engine.</p>
     </div>
     <div class="nav-links">
-      <a class="dashboard-link" href="inventory.html">View Inventory &rarr;</a>
-      <a class="dashboard-link" href="../dashboard.html" target="_blank">View Dashboard &rarr;</a>
+      <a class="nav-link" href="inventory.html">View Inventory &rarr;</a>
+      <a class="nav-link" href="../dashboard.html" target="_blank">View Dashboard &rarr;</a>
     </div>
   </header>
 
   <div class="error-banner" id="error-banner"></div>
 
-  <div class="card" id="setup-card">
-    <h2>Set up the negotiation</h2>
-    <div class="row">
-      <div class="field">
-        <label for="merchant-select">Merchant</label>
-        <select id="merchant-select"><option value="">Loading merchants…</option></select>
+  <!-- Step 1: setup -->
+  <div id="step-setup">
+    <div class="card" id="setup-card">
+      <h2>Set up the negotiation</h2>
+      <div class="row">
+        <div class="field">
+          <label for="merchant-select">Merchant</label>
+          <select id="merchant-select"><option value="">Loading merchants…</option></select>
+        </div>
+        <div class="field">
+          <label for="product-select">Product</label>
+          <select id="product-select" disabled><option value="">Select a merchant first</option></select>
+        </div>
       </div>
       <div class="field">
-        <label for="product-select">Product</label>
-        <select id="product-select" disabled><option value="">Select a merchant first</option></select>
-      </div>
-    </div>
-    <div class="field">
-      <label for="buyer-select">Buyer</label>
-      <select id="buyer-select"><option value="">Loading buyers…</option></select>
-    </div>
-    <div class="field">
-      <label>List price for this product</label>
-      <div class="hint" id="list-price-hint">Pick a product to see this.</div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <label for="start-price">Starting offer</label>
-        <input type="number" id="start-price" min="0" step="0.01" placeholder="e.g. 1600">
+        <label for="buyer-select">Buyer</label>
+        <select id="buyer-select"><option value="">Loading buyers…</option></select>
       </div>
       <div class="field">
-        <label for="max-price">Maximum budget</label>
-        <input type="number" id="max-price" min="0" step="0.01" placeholder="e.g. 1900">
+        <label>List price for this product</label>
+        <div class="hint" id="list-price-hint">Pick a product to see this.</div>
       </div>
-    </div>
-    <div class="field">
-      <div class="hint hint-secondary" id="min-qty-hint" hidden></div>
-      <div class="budget-warning" id="budget-warning" hidden></div>
-    </div>
-    <div class="field">
-      <label for="qty-input">Quantity</label>
-      <input type="number" id="qty-input" min="1" max="20" step="1" value="1">
-    </div>
-    <div class="row">
-      <div class="field">
-        <label for="buyer-mode-select">Buyer type</label>
-        <select id="buyer-mode-select">
-          <option value="ai" selected>AI (Gemini-driven)</option>
-          <option value="scripted">Scripted (instant, rule-based)</option>
-        </select>
+      <div class="row">
+        <div class="field">
+          <label for="start-price">Starting offer</label>
+          <input type="number" id="start-price" min="0" step="0.01" placeholder="e.g. 1600">
+        </div>
+        <div class="field">
+          <label for="max-price">Maximum budget</label>
+          <input type="number" id="max-price" min="0" step="0.01" placeholder="e.g. 1900">
+        </div>
       </div>
       <div class="field">
-        <label for="merchant-mode-select">Merchant type</label>
-        <select id="merchant-mode-select">
-          <option value="rules" selected>Rules (instant, deterministic)</option>
-          <option value="ai">AI (Gemini-driven)</option>
-        </select>
+        <div class="hint hint-secondary" id="min-qty-hint" hidden></div>
+        <div class="budget-warning" id="budget-warning" hidden></div>
+      </div>
+      <div class="field">
+        <label for="qty-input">Quantity</label>
+        <input type="number" id="qty-input" min="1" max="20" step="1" value="1">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="buyer-mode-select">Buyer type</label>
+          <select id="buyer-mode-select">
+            <option value="ai" selected>AI (Gemini-driven)</option>
+            <option value="scripted">Scripted (instant, rule-based)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="merchant-mode-select">Merchant type</label>
+          <select id="merchant-mode-select">
+            <option value="ai" selected>AI (Gemini-driven)</option>
+            <option value="rules">Rules (instant, deterministic)</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint hint-secondary" id="ai-mode-note" hidden></div>
+      <div class="field">
+        <label>Request perks</label>
+        <div class="radio-group">
+          <label><input type="checkbox" id="perk-free-delivery" value="free_delivery"> Request free delivery</label>
+          <label><input type="checkbox" id="perk-extended-warranty" value="extended_warranty"> Request extended warranty</label>
+        </div>
+      </div>
+      <button class="primary" id="start-btn">Start Negotiation</button>
+    </div>
+  </div>
+
+  <!-- Step 2: the negotiation itself -- loading, Risk Agent, round-by-
+       round reveal, and both pause-for-decision cards (round-limit,
+       human approval). Both pauses stay on THIS step, per the request:
+       they're part of the negotiation still in progress, not a separate
+       page. -->
+  <div id="step-negotiate">
+    <div class="card" id="loading-card">
+      <div class="loading-row">
+        <span class="spinner spinner-lg"></span>
+        <div>
+          <div class="loading-title" id="loading-title">Negotiating…</div>
+          <div class="loading-sub" id="loading-sub"></div>
+        </div>
       </div>
     </div>
-    <div class="hint hint-secondary" id="ai-mode-note" hidden></div>
-    <div class="field">
-      <label>Request perks</label>
-      <div class="radio-group">
-        <label><input type="checkbox" id="perk-free-delivery" value="free_delivery"> Request free delivery</label>
-        <label><input type="checkbox" id="perk-extended-warranty" value="extended_warranty"> Request extended warranty</label>
+
+    <div class="card" id="risk-card">
+      <h2>
+        <span>Risk Agent</span>
+        <span class="badge" id="risk-tier-badge"></span>
+      </h2>
+      <ul id="risk-factors"></ul>
+      <div class="consequences">
+        <div><b>Discount ceiling</b><span id="risk-discount"></span></div>
+        <div><b>Approval required</b><span id="risk-approval"></span></div>
       </div>
     </div>
-    <button class="primary" id="start-btn">Start Negotiation</button>
-  </div>
 
-  <div class="card" id="loading-card">
-    <div class="loading-row">
-      <span class="spinner spinner-lg"></span>
-      <div>
-        <div class="loading-title" id="loading-title">Negotiating…</div>
-        <div class="loading-sub" id="loading-sub"></div>
-      </div>
+    <div class="card" id="rounds-container"></div>
+
+    <div class="card" id="round-limit-card">
+      <h2>Negotiation round limit reached</h2>
+      <div class="summary" id="round-limit-summary"></div>
+      <div class="reason" id="round-limit-reason">No agreement was reached within the round limit. You can accept the merchant's final offer, or walk away.</div>
+      <button class="approve" id="round-limit-accept-btn">Accept Final Offer</button>
+      <button class="decline" id="round-limit-decline-btn">Do Not Proceed</button>
+    </div>
+
+    <div class="card" id="approval-card">
+      <h2>Human approval required</h2>
+      <div class="summary" id="approval-summary"></div>
+      <div class="reason" id="approval-reason"></div>
+      <button class="approve" id="approve-btn">Approve</button>
+      <button class="decline" id="decline-btn">Decline</button>
+    </div>
+
+    <!-- Section 2AS (2026-09-05): the negotiation reaching a terminal
+         result (or an Approve/Decline or round-limit decision resolving)
+         no longer jumps straight to Step 3 -- it waits here until the
+         user explicitly says they're done reading. -->
+    <div class="card" id="continue-card">
+      <h2>Negotiation complete</h2>
+      <button class="primary" id="continue-to-outcome-btn">Continue to Outcome</button>
     </div>
   </div>
 
-  <div class="card" id="risk-card">
-    <h2>
-      <span>Risk Agent</span>
-      <span class="badge" id="risk-tier-badge"></span>
-    </h2>
-    <ul id="risk-factors"></ul>
-    <div class="consequences">
-      <div><b>Discount ceiling</b><span id="risk-discount"></span></div>
-      <div><b>Approval required</b><span id="risk-approval"></span></div>
+  <!-- Step 3: final outcome -- agreed price/state, Payment Details, and
+       Perks (inside outcome-card) together, last screen, no further
+       sections below. -->
+  <div id="step-outcome">
+    <div class="card" id="outcome-card">
+      <h2>Outcome <span class="badge" id="outcome-badge"></span></h2>
+      <div class="price-line" id="outcome-price"></div>
+      <div class="detail-line" id="outcome-detail"></div>
+      <div class="detail-line" id="outcome-perks"></div>
     </div>
-  </div>
 
-  <div class="card" id="rounds-container"></div>
+    <div class="card" id="floor-reveal-card">
+      <h2>The merchant's true floor, revealed</h2>
+      <div class="hint" id="floor-reveal-hint"></div>
+      <details class="floor-breakdown" id="floor-breakdown" hidden>
+        <summary>How is this calculated?</summary>
+        <div id="floor-breakdown-body"></div>
+      </details>
+    </div>
 
-  <div class="card" id="round-limit-card">
-    <h2>Negotiation round limit reached</h2>
-    <div class="summary" id="round-limit-summary"></div>
-    <div class="reason" id="round-limit-reason">No agreement was reached within the round limit. You can accept the merchant's final offer, or walk away.</div>
-    <button class="approve" id="round-limit-accept-btn">Accept Final Offer</button>
-    <button class="decline" id="round-limit-decline-btn">Do Not Proceed</button>
-  </div>
+    <div class="card" id="payment-card">
+      <h2>Payment Details <span class="badge" id="payment-badge"></span></h2>
+      <div id="payment-body"></div>
+    </div>
 
-  <div class="card" id="approval-card">
-    <h2>Human approval required</h2>
-    <div class="summary" id="approval-summary"></div>
-    <div class="reason" id="approval-reason"></div>
-    <button class="approve" id="approve-btn">Approve</button>
-    <button class="decline" id="decline-btn">Decline</button>
-  </div>
+    <div class="card" id="audit-trail-card">
+      <h2>Raw Audit Trail</h2>
+      <details class="floor-breakdown" id="audit-trail-details">
+        <summary>View raw audit trail</summary>
+        <pre id="audit-trail-body">Loading…</pre>
+      </details>
+    </div>
 
-  <div class="card" id="outcome-card">
-    <h2>Outcome <span class="badge" id="outcome-badge"></span></h2>
-    <div class="price-line" id="outcome-price"></div>
-    <div class="detail-line" id="outcome-detail"></div>
-    <div class="detail-line" id="outcome-perks"></div>
-  </div>
-
-  <div class="card" id="floor-reveal-card">
-    <h2>The merchant's true floor, revealed</h2>
-    <div class="hint" id="floor-reveal-hint"></div>
-    <details class="floor-breakdown" id="floor-breakdown" hidden>
-      <summary>How is this calculated?</summary>
-      <div id="floor-breakdown-body"></div>
-    </details>
-  </div>
-
-  <div class="card" id="payment-card">
-    <h2>Payment Details <span class="badge" id="payment-badge"></span></h2>
-    <div id="payment-body"></div>
+    <button class="primary" id="start-over-btn">Start New Negotiation</button>
   </div>
 
 <script>
@@ -353,7 +524,22 @@ const buyerModeSelect = el("buyer-mode-select");
 const merchantModeSelect = el("merchant-mode-select");
 const aiModeNote = el("ai-mode-note");
 const startBtn = el("start-btn");
+const startOverBtn = el("start-over-btn");
 const errorBanner = el("error-banner");
+
+// Section 2AI: the three step containers -- showStep() shows exactly one,
+// hides the other two. Pure navigation grouping around the SAME cards
+// this page already had; no negotiation/risk/perk/payment logic here.
+const stepSetup = el("step-setup");
+const stepNegotiate = el("step-negotiate");
+const stepOutcome = el("step-outcome");
+
+function showStep(step) {
+  stepSetup.style.display = step === "setup" ? "block" : "none";
+  stepNegotiate.style.display = step === "negotiate" ? "block" : "none";
+  stepOutcome.style.display = step === "outcome" ? "block" : "none";
+  window.scrollTo(0, 0);
+}
 
 const loadingCard = el("loading-card");
 const loadingTitle = el("loading-title");
@@ -362,9 +548,13 @@ const riskCard = el("risk-card");
 const roundsContainer = el("rounds-container");
 const approvalCard = el("approval-card");
 const roundLimitCard = el("round-limit-card");
+const continueCard = el("continue-card");
+const continueToOutcomeBtn = el("continue-to-outcome-btn");
 const outcomeCard = el("outcome-card");
 const floorRevealCard = el("floor-reveal-card");
 const paymentCard = el("payment-card");
+const auditTrailCard = el("audit-trail-card");
+const auditTrailBody = el("audit-trail-body");
 
 let catalogCache = [];
 // Section 2AF: captured once, at the moment a negotiation is actually
@@ -384,6 +574,13 @@ let lastNegotiationParams = null;
 // capture-at-submit-time discipline as lastNegotiationParams above, since
 // this can't change mid-negotiation either.
 let lastRequestedPerks = [];
+// Section 2AS: the terminal outcome payload, held here once a
+// negotiation (or an Approve/Decline or round-limit decision) resolves
+// to a final result -- staged so the user can review the Step 2
+// transcript at their own pace, not auto-advanced to Step 3 the instant
+// the data is ready. Cleared by resetResultPanels() and consumed by
+// continueToOutcomeBtn's click handler below.
+let pendingOutcomeData = null;
 
 function escapeHtml(s) {
   const div = document.createElement("div");
@@ -636,18 +833,26 @@ async function renderFloorReveal(outcomeData) {
 function resetResultPanels() {
   loadingCard.style.display = "none";
   riskCard.style.display = "none";
-  riskCard.className = "";
+  // Section 2AL fix: this used to overwrite className to "" entirely,
+  // silently dropping the "card" class too (harmless before, since
+  // #risk-card's own background/border rule didn't depend on it -- now
+  // it also supplies color: var(--card-text), so losing it left risk-card
+  // text on the wrong color against its own dark background).
+  riskCard.className = "card";
   roundsContainer.style.display = "none";
   roundsContainer.innerHTML = "";
   approvalCard.style.display = "none";
   roundLimitCard.style.display = "none";
+  continueCard.style.display = "none";
+  pendingOutcomeData = null;
   outcomeCard.style.display = "none";
   floorRevealCard.style.display = "none";
   paymentCard.style.display = "none";
+  auditTrailCard.style.display = "none";
 }
 
 function renderRiskCard(risk) {
-  riskCard.className = "risk-" + risk.level;
+  riskCard.className = "card risk-" + risk.level;
   el("risk-tier-badge").textContent = risk.level.toUpperCase();
   el("risk-tier-badge").className = "badge badge-" + risk.level;
   el("risk-factors").innerHTML = risk.factors.map(f => `<li>${f}</li>`).join("") || "<li>No specific factors</li>";
@@ -767,6 +972,33 @@ function renderOutcome(data) {
   outcomeCard.style.display = "block";
   renderPaymentCard(data);
   renderFloorReveal(data);
+  renderAuditTrail(data);
+}
+
+// Section 2AJ: proves the curated cards above (outcome/payment/perks/
+// floor-reveal, and the earlier risk_review/round-by-round reveal on
+// Step 2) are backed by real, complete audit data, not a summary that
+// could be hiding something. Fetches GET /api/audit-log -- a read-only
+// endpoint that reuses src.dashboard.load_entries() over the same log
+// files GET /api/dashboard-data already reads, filtered to this
+// negotiation_id -- and dumps the raw entries as plain JSON. Collapsed
+// by default (a <details> element, same interaction pattern as "How is
+// this calculated?" above); deliberately unstyled beyond basic
+// wrap/scroll, per the request -- this is about proving completeness,
+// not presentation.
+async function renderAuditTrail(data) {
+  if (!data.negotiation_id) {
+    auditTrailCard.style.display = "none";
+    return;
+  }
+  auditTrailBody.textContent = "Loading…";
+  auditTrailCard.style.display = "block";
+  try {
+    const result = await api(`/api/audit-log?negotiation_id=${encodeURIComponent(data.negotiation_id)}`);
+    auditTrailBody.textContent = JSON.stringify(result.entries, null, 2);
+  } catch (e) {
+    auditTrailBody.textContent = "Could not load the raw audit trail: " + e.message;
+  }
 }
 
 // Payment Details card (Section 4A's curated payment shape --
@@ -867,7 +1099,6 @@ function revealSequence(data, onDone) {
 
 async function startNegotiation() {
   clearError();
-  resetResultPanels();
   const productId = productSelect.value;
   const buyerId = buyerSelect.value;
   const buyerMode = buyerModeSelect.value;
@@ -894,6 +1125,12 @@ async function startNegotiation() {
   // reveal must describe what was ACTUALLY negotiated.
   lastNegotiationParams = { productId, buyerId, qty };
   lastRequestedPerks = requestedPerks;
+
+  // Section 2AI: move to the Step 2 view now that validation passed --
+  // the loading spinner and everything that follows belongs there, not
+  // stacked below the setup form.
+  resetResultPanels();
+  showStep("negotiate");
 
   const aiActive = buyerMode === "ai" || merchantMode === "ai";
   startBtn.disabled = true;
@@ -932,9 +1169,28 @@ async function startNegotiation() {
   } catch (e) {
     showError("Negotiation failed: " + e.message);
     loadingCard.style.display = "none";
+    // Section 2AI: validation already passed and we've moved to Step 2 by
+    // this point (e.g. the API call itself failed) -- back to Step 1
+    // rather than stranding the user on an empty Step 2 view.
+    showStep("setup");
     startBtn.disabled = false;
     startBtn.textContent = "Start Negotiation";
   }
+}
+
+// Section 2AS (2026-09-05): replaces the old "jump straight to Step 3"
+// behavior at every terminal point (a completed negotiation, an
+// Approve/Decline resolution, a round-limit accept/decline resolution).
+// Stages `data` and reveals the "Continue to Outcome" card instead --
+// the actual step transition only happens from that button's own click
+// handler below, never automatically. Fixes the real issue: the round-
+// by-round reveal (revealSequence()) legitimately animates one round at
+// a time, but the instant it finished, every one of these three call
+// sites used to advance immediately with zero pause for the user to
+// read what had just appeared.
+function readyForOutcome(data) {
+  pendingOutcomeData = data;
+  continueCard.style.display = "block";
 }
 
 function onNegotiationRevealed(data) {
@@ -943,6 +1199,9 @@ function onNegotiationRevealed(data) {
   // agreement at all -- a different decision ("accept the merchant's
   // final offer, or walk away?") than "pending_approval", which only
   // ever fires once a price has already been agreed and needs sign-off.
+  // Section 2AI: both stay on the Step 2 view (already showing) -- the
+  // decision is still part of the negotiation in progress, not a
+  // separate page.
   if (data.status === "round_limit_reached") {
     el("round-limit-summary").textContent =
       `The round limit was reached with no agreement. Merchant's final offer: ${data.final_offer_price} x${data.final_offer_qty}.`;
@@ -959,7 +1218,8 @@ function onNegotiationRevealed(data) {
     approveBtn.disabled = false;
     declineBtn.disabled = false;
   } else {
-    renderOutcome(data);
+    // Terminal outcome -- stage it and wait for the user (Section 2AS).
+    readyForOutcome(data);
     startBtn.disabled = false;
     startBtn.textContent = "Start Negotiation";
   }
@@ -981,7 +1241,10 @@ async function resolveApproval(approved) {
       body: JSON.stringify({ negotiation_id: negotiationId, approved }),
     });
     approvalCard.style.display = "none";
-    renderOutcome(data);
+    // /api/approve is always terminal (COMPLETED/ROLLBACK/APPROVAL_DECLINED)
+    // -- never another pause -- but still waits for the user (Section 2AS)
+    // rather than moving on to Step 3 automatically.
+    readyForOutcome(data);
   } catch (e) {
     showError("Approval failed: " + e.message);
   } finally {
@@ -1004,12 +1267,12 @@ async function resolveRoundLimitDecision(accept) {
     // Accepting can itself land in the normal approval gate (e.g. the
     // resulting price/risk tier warrants it) -- a SECOND, separate
     // pause, not skipped. onNegotiationRevealed() already knows how to
-    // render that card; only fall through to the final outcome when this
-    // resolved all the way to "completed".
+    // render that card, staying on Step 2; only move on to Step 3 when
+    // this resolved all the way to "completed".
     if (data.status === "pending_approval") {
       onNegotiationRevealed(data);
     } else {
-      renderOutcome(data);
+      readyForOutcome(data);
       startBtn.disabled = false;
       startBtn.textContent = "Start Negotiation";
     }
@@ -1032,8 +1295,32 @@ approveBtn.addEventListener("click", () => resolveApproval(true));
 declineBtn.addEventListener("click", () => resolveApproval(false));
 roundLimitAcceptBtn.addEventListener("click", () => resolveRoundLimitDecision(true));
 roundLimitDeclineBtn.addEventListener("click", () => resolveRoundLimitDecision(false));
+// Section 2AS: the ONLY place Step 3 is actually entered from a
+// completed/resolved negotiation -- readyForOutcome() above only stages
+// the data and reveals this button, never advances on its own.
+continueToOutcomeBtn.addEventListener("click", () => {
+  if (!pendingOutcomeData) return;
+  const data = pendingOutcomeData;
+  pendingOutcomeData = null;
+  continueCard.style.display = "none";
+  showStep("outcome");
+  renderOutcome(data);
+});
+// Section 2AI: the only way back to Step 1 -- clears the previous
+// negotiation's result cards and returns to the setup form. Form field
+// values (merchant/product/buyer/qty/prices/perks) are deliberately left
+// as-is, so re-running a similar negotiation doesn't require re-entering
+// everything.
+startOverBtn.addEventListener("click", () => {
+  clearError();
+  resetResultPanels();
+  showStep("setup");
+  startBtn.disabled = false;
+  startBtn.textContent = "Start Negotiation";
+});
 
-updateModeUI(); // reflect the default (AI buyer + rules merchant) immediately on load
+updateModeUI(); // reflect the default (AI buyer + AI merchant) immediately on load
+showStep("setup");
 loadMerchants();
 loadBuyers();
 </script>

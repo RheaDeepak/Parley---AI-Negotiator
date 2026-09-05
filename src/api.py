@@ -1,5 +1,9 @@
 """Parley HTTP API (Milestone 8) -- thin FastAPI wrapper around the
-existing negotiation engine, for frontend/index.html.
+existing negotiation engine, for frontend/negotiate.html (Section 2AI,
+2026-09-05: index.html is now a plain landing page at the repo root
+-- Section 2AO, same day -- so it's reachable as the project's actual
+entry point; the negotiation tool this module serves moved to
+frontend/negotiate.html).
 
 No negotiation/pricing/guardrail logic lives here. Every decision (offer
 evaluation, discount caps, risk assessment, approval-gate conditions,
@@ -34,7 +38,7 @@ so it can itself pause a SECOND time into the ordinary PENDING_APPROVAL
 gate if the resulting price/risk tier warrants it. Two separate pending-
 state dicts, two separate endpoints, deliberately -- this is a different
 decision point from the human-approval gate, not a variant of it (see
-frontend/index.html's separate "round-limit-card" for the same reason).
+frontend/negotiate.html's separate "round-limit-card" for the same reason).
 
 Run with:
     uvicorn src.api:app --reload --port 8000
@@ -46,7 +50,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src import personalization
-from src.dashboard import compute_dashboard_data
+from src.dashboard import DEFAULT_LOG_PATHS, compute_dashboard_data, load_entries
 from src.agents import merchant_agent
 from src.agents.ai_buyer_agent import AIBuyerAgent
 from src.agents.audit_logger import DEFAULT_AUDIT_PATH, log_entry
@@ -291,6 +295,24 @@ def dashboard_data():
     never duplicated. Returns its result as-is; dashboard.html renders it
     client-side and re-fetches this endpoint every 30 seconds."""
     return compute_dashboard_data()
+
+
+@app.get("/api/audit-log")
+def get_audit_log(negotiation_id: str):
+    """Section 2AJ (2026-09-05): read-only, exposes the RAW audit log
+    entries for one negotiation -- proves the curated cards the frontend
+    already renders (rounds, risk_review, perk_review, outcome, payment)
+    are backed by real, complete entries, not a summary that could hide
+    something. No negotiation/pricing/guardrail logic here at all --
+    reuses src.dashboard.load_entries() over the exact same
+    DEFAULT_LOG_PATHS (audits/negotiation.log, audits/dashboard_seed.log)
+    GET /api/dashboard-data's aggregation already reads, so this can never
+    drift from what that reader considers "the audit trail". Every entry
+    for this negotiation_id is returned, across both files, in file-then-
+    line order -- unfiltered beyond the negotiation_id match itself."""
+    entries, _ = load_entries(DEFAULT_LOG_PATHS)
+    matching = [e for e in entries if e.get("negotiation_id") == negotiation_id]
+    return {"negotiation_id": negotiation_id, "count": len(matching), "entries": matching}
 
 
 @app.get("/api/inventory")
