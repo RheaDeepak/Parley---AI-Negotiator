@@ -13,6 +13,223 @@ negotiate within whatever room the guardrails leave. The guardrail layer
 never trusts the LLM's output -- every proposal is re-validated in code
 before it can reach the buyer or the audit log.
 
+## Getting Started (Windows, PowerShell, from a fresh clone)
+
+A complete, literal walkthrough — assumes you know Python but nothing
+else about this project. Every command below is PowerShell syntax.
+
+### 1. Prerequisites
+
+- **Python 3.10 or later.** Check with:
+  ```powershell
+  python --version
+  ```
+- **git.** Check with:
+  ```powershell
+  git --version
+  ```
+
+### 2. Clone and install
+
+```powershell
+git clone https://github.com/RheaDeepak/Parley---AI-Negotiator.git
+cd "Parley---AI-Negotiator"
+pip install -r requirements.txt
+```
+
+(`cd` into whatever folder name git actually created — pass a name as a
+third argument to `git clone` if you want to control it, e.g.
+`git clone <url> Parley`.)
+
+### 3. API keys
+
+Two independent integrations, both optional — read the note under each
+before deciding whether you need it.
+
+**`GEMINI_API_KEY`** — needed only for `BUYER_MODE=ai` / `MERCHANT_MODE=ai`
+(the LLM-driven buyer/merchant). Without it, everything still works with
+the scripted buyer and rules-only merchant (the defaults for the CLI's
+minimal smoke test).
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey) and sign
+   in with a Google account.
+2. Click **Create API key**. This is free-tier, no card required.
+3. Set it:
+   ```powershell
+   setx GEMINI_API_KEY "your-key-here"
+   ```
+   **`setx` writes to the Windows registry for future sessions — it does
+   NOT update your current terminal.** Close this terminal and open a
+   new one before `$env:GEMINI_API_KEY` will show the value. If you'd
+   rather not restart your terminal, set it for just this session
+   instead (no restart needed, but you'll have to repeat it every time
+   you open a new terminal):
+   ```powershell
+   $env:GEMINI_API_KEY = "your-key-here"
+   ```
+
+**`RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`** — needed only for the
+payment phase (after a negotiated agreement, before a real Razorpay
+test-mode order is created). **Optional** — without both set, the CLI
+prints `RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not set -- running
+negotiation only, no payment phase.` and stops cleanly right after an
+agreement; no payment call is ever attempted, nothing breaks.
+
+1. Go to the [Razorpay Dashboard](https://dashboard.razorpay.com/) and
+   sign in (or sign up — no business verification needed to get test
+   keys).
+2. Toggle **Test Mode** (top of the dashboard) — confirm it's on before
+   generating keys. **Never use anything but Test Mode keys with this
+   project.**
+3. Go to **Settings → API Keys → Generate Test Key**.
+4. Set both, same pattern as above:
+   ```powershell
+   setx RAZORPAY_KEY_ID "rzp_test_..."
+   setx RAZORPAY_KEY_SECRET "..."
+   ```
+   Same restart-required caveat — new terminal needed before these take
+   effect.
+
+### 4. Generate the synthetic data
+
+```powershell
+python scripts/generate_synthetic_data.py
+python scripts/generate_negotiation_history.py
+```
+
+Run in that order. The first writes `data/catalog.json` (80 products),
+`data/buyers.json` (30 buyer personas), and `data/orders.json` (~200
+historical orders) — the dataset every catalog-driven negotiation, the
+LTV bonus, liquidation, and the Risk Agent all read from. The second
+writes `audits/dashboard_seed.log` — ~130 pre-run negotiations (no real
+API calls, no cost) so `dashboard.html` has something to show
+immediately instead of an empty table.
+
+Both are deterministic (`--seed 42` by default — same seed always
+produces byte-identical output), so re-running them is always safe.
+
+> **Note, verified while writing this guide:** this repo actually ships
+> with `data/*.json` and both `audits/*.log` files already committed, so
+> technically the app runs without this step. Run it anyway — it's
+> instant, free, and guarantees you're starting from the same
+> undepleted, reproducible dataset every example in this README assumes
+> (repeated demo runs permanently decrement `current_inventory` on a
+> `COMPLETED` sale — see step 7).
+
+### 5. Running a negotiation via CLI
+
+```powershell
+$env:PRODUCT_ID = "SKU-ELEC-001"
+$env:BUYER_ID = "BUYER-001"
+$env:BUYER_MODE = "ai"
+$env:MERCHANT_MODE = "ai"
+python -m src.negotiation_loop
+```
+
+This one actually works end-to-end (verified) — negotiates a real
+catalog product against a real buyer persona, both sides Gemini-driven
+(needs `GEMINI_API_KEY`), and — if both Razorpay vars are also set —
+automatically proceeds through a real test-mode payment. No separate
+step is needed to trigger payment after agreement.
+
+Every relevant environment variable, all optional:
+
+| Variable | Values | What it does |
+|---|---|---|
+| `PRODUCT_ID` | e.g. `SKU-ELEC-001` | Negotiates a real synthetic-catalog product instead of the minimal fixture in `merchant_policy.json`. Required to exercise LTV, liquidation, risk, and the inventory check at all. |
+| `BUYER_ID` | e.g. `BUYER-001` | Uses that buyer's real persona, order history, and LTV-based discount bonus instead of a generic hardcoded buyer. |
+| `BUYER_BUDGET` | a number | Overrides the buyer's max acceptable price directly, instead of deriving it from the persona. |
+| `BUYER_MODE` | `scripted` (default) or `ai` | `ai` uses the Gemini-driven buyer; needs `GEMINI_API_KEY`. `scripted` is deterministic and instant. |
+| `MERCHANT_MODE` | `rules` (default) or `ai` | `ai` adds the Gemini strategy layer on top of the same hard guardrails; needs `GEMINI_API_KEY`. `rules` is deterministic and instant. |
+| `FORCE_PAYMENT_FAILURE` | `1`/`true`/`yes` | Forces the (simulated) payment outcome to fail, to demo the rollback path. |
+| `FORCE_INSUFFICIENT_INVENTORY` | `1`/`true`/`yes` | Forces the inventory-shortfall rollback without touching real catalog stock. Requires `PRODUCT_ID` — a warning prints if it's missing. |
+
+(`$env:VAR = "value"` sets a variable for the current PowerShell session
+only — no restart needed, unlike `setx` above.)
+
+### 6. Running the interactive frontend
+
+This needs **two terminals running at the same time**, plus a browser.
+
+**Terminal 1 — the API backend:**
+```powershell
+python -m uvicorn src.api:app --reload --port 8000
+```
+
+**Terminal 2 — the static frontend server (run from the repo root):**
+```powershell
+python -m http.server 8080
+```
+
+**Then open in a browser:**
+```
+http://localhost:8080/index.html
+```
+
+> The negotiation form links to two other pages via the nav bar once
+> you're inside them: **View Dashboard** (`dashboard.html` — live
+> negotiation history and stats, auto-refreshing) and **View Inventory**
+> (`frontend/inventory.html` — live stock levels). Both are separate
+> pages, not tabs on the same page.
+
+Leave both terminals running the whole time you're using the frontend —
+closing either one breaks it (Terminal 1 serves every `/api/...` call
+the page makes; Terminal 2 serves the HTML/CSS/JS itself).
+
+### 7. Resetting data
+
+Every `COMPLETED` payment permanently decrements the sold product's
+`current_inventory` in `data/catalog.json`. After testing has depleted
+some stock, restore it to the original seeded values (without touching
+`buyers.json`/`orders.json`, so LTV/persona data stays put):
+
+```powershell
+python scripts/reset_data.py
+```
+
+### 8. Running the tests
+
+```powershell
+python -m pytest -v
+```
+
+Fully mocked/offline by default — no live LLM or Razorpay calls, no
+`GEMINI_API_KEY` needed, no network access required. To also run the
+handful of tests that call the real Gemini API:
+
+```powershell
+python -m pytest --run-live-llm -v
+```
+
+Needs a real `GEMINI_API_KEY` in the environment and consumes real
+(free-tier) API quota — skipped by default for exactly that reason.
+
+### 9. Troubleshooting
+
+**`uvicorn` / `pytest` : The term '...' is not recognized...`**
+Windows can't find the console-script shim on your `PATH`, even though
+the package installed fine. Run it as a module through Python instead —
+this always works regardless of `PATH`:
+```powershell
+python -m uvicorn src.api:app --reload --port 8000
+python -m pytest -v
+```
+
+**`error while attempting to bind on address ('127.0.0.1', 8000):
+only one usage of each socket address is normally permitted`**
+Something is already listening on port 8000 — usually a `uvicorn` from
+an earlier terminal you forgot to close. Find and stop it:
+```powershell
+netstat -ano | findstr :8000
+```
+The last column of the matching line(s) is the PID. Then:
+```powershell
+taskkill /PID <pid> /F
+```
+and re-run `uvicorn`. (If you genuinely can't find/kill it, the simplest
+fix is just closing that terminal window, or restarting your machine —
+the process will not survive either.)
+
 ## Architecture
 
 > **For the full architecture writeup** — the floor-price computation,
