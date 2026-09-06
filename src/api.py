@@ -97,7 +97,13 @@ class NegotiateRequest(BaseModel):
     buyer_id: str
     start_price: float
     max_price: float
-    qty: int = Field(default=1, ge=1, le=20)
+    # No upper bound: an offer quantity above the product's real
+    # current_inventory is exactly what the existing inventory
+    # fulfillment check (run_full_transaction()'s real_inventory_shortfall,
+    # NEGOTIATION_SPEC.md Section 3B) exists to catch -- an artificial cap
+    # here would just make that real rollback unreachable from the UI for
+    # any product whose stock exceeds the cap.
+    qty: int = Field(default=1, ge=1)
     requested_perks: list = Field(default_factory=list)
     buyer_mode: Literal["scripted", "ai"] = "ai"
     merchant_mode: Literal["rules", "ai"] = "rules"
@@ -354,10 +360,13 @@ def negotiate(req: NegotiateRequest):
     policy = _build_policy(product, req.buyer_id, orders)
     risk_approval_tier = _resolve_risk_approval_tier(product)
 
-    # qty comes straight from the request (1-20, validated by
+    # qty comes straight from the request (>=1, validated by
     # NegotiateRequest) -- never hardcoded here. A qty below
     # policy.inventory_floor still correctly instant-rejects via
-    # check_guardrails(), same as it always has; the frontend's
+    # check_guardrails(), same as it always has; a qty above the
+    # product's real current_inventory rolls back via the existing
+    # inventory fulfillment check inside run_full_transaction() (Section
+    # 3B) -- no special-casing needed here. The frontend's
     # /api/floor-preview hint is what helps a user pick a sane qty
     # before starting, not a silent clamp here.
     #

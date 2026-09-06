@@ -1,0 +1,10 @@
+INFO:     127.0.0.1:53989 - "POST /api/negotiate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64400 - "POST /api/negotiate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59888 - "POST /api/negotiate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62373 - "GET /api/merchants HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50391 - "GET /api/buyers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51232 - "GET /api/catalog?merchant_id=MERCH-002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51232 - "OPTIONS /api/negotiate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51232 - "POST /api/negotiate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51426 - "GET /api/floor-preview?product_id=SKU-HOME-003&buyer_id=BUYER-004&qty=114 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57230 - "GET /api/audit-log?negotiation_id=47c608c88f3642909dee862ea257e9b2 HTTP/1.1" 200 OK

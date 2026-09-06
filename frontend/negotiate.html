@@ -380,7 +380,12 @@
       </div>
       <div class="field">
         <label for="qty-input">Quantity</label>
-        <input type="number" id="qty-input" min="1" max="20" step="1" value="1">
+        <!-- No max attribute: a quantity above the product's real stock is
+             exactly what the real inventory check (post-agreement, before
+             any payment call) exists to catch and roll back -- an
+             artificial UI cap would just make that unreachable for any
+             product whose stock exceeds it. -->
+        <input type="number" id="qty-input" min="1" step="1" value="1">
       </div>
       <div class="row">
         <div class="field">
