@@ -48,7 +48,7 @@ flowchart TB
 
     subgraph PAY["payment_service"]
         P1["create_order() -- real Razorpay<br/>test-mode API call, real order_id"]
-        P2["simulate_payment() -- in-process<br/>outcome simulation (Section 3A)"]
+        P2["simulate_payment() -- in-process<br/>outcome simulation"]
     end
 
     BUYER <-. "public offers/counters only" .-> MERCHANT
@@ -65,7 +65,7 @@ flowchart TB
     `PAYMENT_INITIATED` → `COMPLETED`/`ROLLBACK`, or
     `APPROVAL_DECLINED`) — Section 3A.
   - `retry_payment()` is the *only* path that ever retries a failed
-    payment — never called automatically (Section 6).
+    payment — never called automatically (Section 7).
 
 - **Buyer-agent** — two interchangeable implementations behind the same
   interface (`initial_offer()`, `respond_to_counter()`):
@@ -95,11 +95,13 @@ flowchart TB
 - **Audit logger — `audit_logger.py`** — one JSON object per line,
   appended for every negotiation and payment action. Every agent
   (including the Risk Agent) calls the same `log_entry()` function; see
-  Section 7.
+  Section 8.
 
 - **Payment service — `payment_service.py`** — `create_order()` makes a
   real Razorpay test-mode API call; `simulate_payment()` decides the
-  outcome in-process (Section 6 explains why).
+  outcome in-process, since Razorpay's real capture step requires a
+  browser Checkout flow this headless negotiation loop never performs
+  (NEGOTIATION_SPEC.md Section 3A has the full rationale).
 
 - **`personalization.py`** — a pure, deterministic data layer alongside
   all of this: turns a catalog product into the policy dict the
@@ -118,7 +120,47 @@ each know their own limits and not the other's.
 
 ---
 
-## 3. The floor-price computation
+## 3. Buyer personas
+
+Every buyer in `data/buyers.json` carries a `persona` label and a
+free-text `negotiation_style` description. These aren't just flavor
+text: each persona label deterministically maps to a discount-tolerance
+band (`personalization.PERSONA_DISCOUNT_BANDS`) that bounds how far that
+buyer's budget realistically sits below a product's real `list_price`
+when it's derived at negotiation time (`budget_from_list_price()`) —
+the AI/scripted buyer never gets a fixed absolute number unrelated to
+what's actually being negotiated over.
+
+| Persona | Discount band | Typical behavior |
+|---|---|---|
+| Premium Customer | 0–8% | Budget-insensitive; values convenience/quality over squeezing out a discount. |
+| First Time Customer | 5–15% | Cautious, new to the merchant; pushes for a modest discount before trusting the deal. |
+| Whale | 5–15% | Aggressive; anchors low and concedes very slowly, but has deep pockets. |
+| Loyal Regular | 10–18% | Fair-minded, values the ongoing relationship; open to a reasonable discount, not confrontational. |
+| Bulk Buyer | 12–24% | Quantity-focused; negotiates hard on volume discounts but is only mildly sensitive to per-unit price. |
+| Stubborn Negotiator | 12–22% | Unyielding; slow to concede, holds firm round after round. |
+| Occasional Buyer | 15–25% | Moderate; open to a fair discount but not desperate. |
+| Bargain Hunter | 18–30% | Relentlessly price-focused; anchors low and pushes hard for the steepest discount. |
+| Window Shopper | 25–40% | Passive; browses without urgency, rarely converts, quick to walk away rather than negotiate hard. Also the one persona denied every perk outright, regardless of order history — see Section 6. |
+
+`negotiation_style` is a free-text field per individual buyer (fed
+directly into the AI buyer's prompt) rather than a strict enum, so two
+buyers sharing a persona label can carry slightly different exact
+wording — the table above is the persona's typical shape across the
+dataset, not a literal lookup string.
+
+**"Whale" and "Occasional Buyer" don't appear in the frontend's buyer
+dropdown** (Section 2Y) — their data and behavior are still fully live
+(reachable via any direct `BUYER_ID` in a CLI run, and still affecting
+`PERSONA_DISCOUNT_BANDS`/LTV math for any buyer who has one of these
+labels), but the interactive frontend curates the list down to exactly
+one hand-picked representative buyer per remaining persona, chosen by
+matching real LTV/order-count numbers rather than "whoever came first
+in the file."
+
+---
+
+## 4. The floor-price computation
 
 Every negotiation has one number that governs everything: the floor
 price the merchant will never counter below. It starts simple and gets
@@ -163,7 +205,7 @@ construction.
    30% ceiling regardless of how loyal the buyer is.
 
 3. **Risk tier** *tightens* the ceiling instead — the opposite
-   direction from the LTV bonus. See Section 4 for the exact factors
+   direction from the LTV bonus. See Section 5 for the exact factors
    and percentages.
 
 **When risk and liquidation both apply on the same product, risk's
@@ -210,7 +252,7 @@ policy.**
 
 ---
 
-## 4. The Risk Agent
+## 5. The Risk Agent
 
 Deterministic, code-only — no LLM call anywhere in this feature
 (`personalization.risk_assessment()`). It runs once, before the buyer's
@@ -264,7 +306,7 @@ at the identical price against either merchant; only the gate differs.
 
 ---
 
-## 5. Perks
+## 6. Perks
 
 Buyers can request `free_delivery` and `extended_warranty` alongside
 price. Eligibility is fully deterministic
@@ -301,7 +343,7 @@ margin floor named explicitly in the rationale.
 
 ---
 
-## 6. Failure modes and rollback
+## 7. Failure modes and rollback
 
 Two distinct ways a negotiated agreement can fail to become a real
 sale — both roll back cleanly, with no duplicate payment attempts and
@@ -341,7 +383,7 @@ the audit log.
 
 ---
 
-## 7. The audit trail
+## 8. The audit trail
 
 Every negotiation and payment action is written as one JSON object per
 line to `audits/negotiation.log`. Every entry carries:
@@ -380,7 +422,7 @@ decided*.
 
 ---
 
-## 8. Multi-merchant support
+## 9. Multi-merchant support
 
 Two full merchant profiles (`data/merchants.json`), each owning a whole
 slice of the catalog by category:
@@ -416,7 +458,7 @@ category they actually carry — Section 2AA.)
 
 ---
 
-## 9. Frontend / API layer
+## 10. Frontend / API layer
 
 **`src/api.py`** is a FastAPI wrapper around the exact same core
 functions described above — `POST /api/negotiate` and
@@ -435,7 +477,7 @@ it ambiguous which decision a given negotiation is actually waiting on:
 
 - **Human approval** (`POST /api/approve`) — fires when the transaction
   value exceeds `transaction_approval_threshold`, or risk/merchant-tier
-  conditions require it (Section 4).
+  conditions require it (Section 5).
 - **Round-limit decision** (`POST /api/round-limit-decision`) — fires
   when `max_negotiation_rounds` is reached with no agreement; the
   merchant's last real counter-offer is presented, and a human (or the
@@ -459,7 +501,7 @@ wants to verify the curated view against the real log entries).
 
 ---
 
-## 10. Known, deliberate scope decisions
+## 11. Known, deliberate scope decisions
 
 These are intentional choices for a time-boxed competition build, not
 unfinished work — each one is a natural next step with a clear path,
@@ -497,7 +539,7 @@ not a gap papered over.
 - **No minimum-order-quantity logic beyond a simple floor.**
   `inventory_floor` rejects an offer below a minimum quantity; there's
   no real stock reservation, backorder, or MOQ-as-a-negotiated-term
-  concept. The perks mechanism (Section 5) already demonstrates the
+  concept. The perks mechanism (Section 6) already demonstrates the
   pattern a real MOQ feature would reuse — a new eligibility/cost
   dimension resolved once and folded into the same margin-floor
   check — so this is a scoped extension of an existing pattern, not new
