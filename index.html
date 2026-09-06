@@ -190,7 +190,7 @@
     margin: 0; line-height: 1.15; text-wrap: balance;
   }
   .bento {
-    display: grid; grid-template-columns: 7fr 5fr; grid-auto-rows: minmax(200px, auto); gap: 20px;
+    display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(200px, auto); gap: 20px;
   }
   .feature-card {
     background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px;
@@ -206,7 +206,6 @@
   }
   .feature-card h3 { font-size: 19px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.01em; }
   .feature-card p { font-size: 14.5px; color: var(--muted); margin: 0; max-width: 40ch; }
-  .feature-card.tall { grid-row: span 2; }
   .feature-card.accent-edge { border-top: 3px solid var(--accent); border-top-left-radius: 14px; border-top-right-radius: 14px; }
 
   /* ---------- CTA band ---------- */
@@ -234,8 +233,6 @@
     .hero .wrap { grid-template-columns: 1fr; gap: 48px; }
     .hero h1 { max-width: none; }
     .trust .wrap { grid-template-columns: 1fr; gap: 28px; }
-    .bento { grid-template-columns: 1fr 1fr; }
-    .feature-card.tall { grid-row: auto; }
   }
   @media (max-width: 680px) {
     .wrap { padding: 0 20px; }
@@ -354,7 +351,7 @@
         <h2>Built for negotiation, not just pricing.</h2>
       </div>
       <div class="bento">
-        <div class="feature-card tall accent-edge">
+        <div class="feature-card accent-edge">
           <div class="num">01</div>
           <h3>Guarded negotiation</h3>
           <p>Your agent never crosses the rules you define. Every floor price and discount limit is enforced by a deterministic layer the AI cannot override.</p>
