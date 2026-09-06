@@ -13,21 +13,12 @@ negotiate within whatever room the guardrails leave. The guardrail layer
 never trusts the LLM's output -- every proposal is re-validated in code
 before it can reach the buyer or the audit log.
 
-## Getting Started (Windows, PowerShell, from a fresh clone)
-
-A complete, literal walkthrough — assumes you know Python but nothing
-else about this project. Every command below is PowerShell syntax.
+## Getting Started (Windows, PowerShell)
 
 ### 1. Prerequisites
 
-- **Python 3.10 or later.** Check with:
-  ```powershell
-  python --version
-  ```
-- **git.** Check with:
-  ```powershell
-  git --version
-  ```
+- **Python 3.10 or later.**
+- **git.** 
 
 ### 2. Clone and install
 
