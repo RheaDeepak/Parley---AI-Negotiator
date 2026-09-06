@@ -24,39 +24,39 @@ before it can reach the buyer or the audit log.
 
 ```
                     ┌───────────────────────────────────────────┐
-                    │            negotiation_loop.py             │
-                    │   (orchestrator: run_negotiation(),         │
-                    │    run_full_transaction(), retry_payment()) │
-                    └───────────────┬─────────────────────────────┘
+                    │            negotiation_loop.py            │
+                    │   (orchestrator: run_negotiation(),       │
+                    │  run_full_transaction(), retry_payment()) │
+                    └───────────────┬───────────────────────────┘
                                     │
         ┌───────────────────────────┼───────────────────────────┐
-        │                            │                            │
-        ▼                            ▼                            ▼
-┌───────────────┐          ┌──────────────────────┐      ┌───────────────────┐
+        │                           │                           │
+        ▼                           ▼                           ▼
+ ┌───────────────┐            ┌──────────────────────┐        ┌───────────────────┐
 │  buyer-agent    │          │   merchant-agent       │      │  payment_service    │
-│                 │          │                        │      │                    │
+│                 │          │                        │      │                     │
 │ BuyerAgent      │◄────────►│ Layer 1: check_        │      │ create_order()      │
 │ (scripted) or   │  offers/ │ guardrails() -- pure,  │      │ (real Razorpay      │
 │ AIBuyerAgent    │  counters│ deterministic, no LLM. │      │ test-mode API call) │
-│ (Gemini-driven) │          │ THE authority on what  │      │                    │
+│ (Gemini-driven) │          │ THE authority on what  │      │                     │
 │                 │          │ price is ever allowed. │      │ simulate_payment()  │
-└───────────────┘          │                        │      │ (in-process outcome │
-                              │ Layer 2: decide_       │      │ simulation -- see   │
-                              │ strategy() -- Gemini    │      │ "Payment simulation │
-                              │ proposes HOW to         │      │ boundary" below)    │
-                              │ negotiate; ALWAYS       │      └───────────────────┘
-                              │ re-validated against    │
-                              │ Layer 1 before use.      │
+ └───────────────┘           │                        │      │ (in-process outcome │
+                             │ Layer 2: decide_       │      │ simulation -- see   │
+                             │ strategy() -- Gemini   │      │ "Payment simulation │
+                             │ proposes HOW to        │      │ boundary" below)    │
+                             │ negotiate; ALWAYS      │       └───────────────────┘
+                             │ re-validated against   │
+                             │ Layer 1 before use.    │
                               └──────────────────────┘
                                     │
                                     ▼
                           ┌──────────────────────┐
-                          │    audit_logger.py     │
-                          │  one JSON object per    │
-                          │  line -> audits/         │
-                          │  negotiation.log         │
-                          │  (decision_hash,          │
-                          │  provenance_sha, ...)     │
+                          │    audit_logger.py   │
+                          │  one JSON object per │
+                          │  line -> audits/     │
+                          │  negotiation.log     │
+                          │  (decision_hash,     │
+                          │  provenance_sha, ...)│
                           └──────────────────────┘
 ```
 
