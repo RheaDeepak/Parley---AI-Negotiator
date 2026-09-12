@@ -13,6 +13,15 @@ negotiate within whatever room the guardrails leave. The guardrail layer
 never trusts the LLM's output -- every proposal is re-validated in code
 before it can reach the buyer or the audit log.
 
+Live Demo
+
+**[parley-yh7b.onrender.com](https://parley-yh7b.onrender.com)**
+
+Running on Render's free tier, so the first request after a period of
+inactivity can take 30-60 seconds to wake up -- if the page seems stuck
+loading, give it a moment and it'll come through. To try it: pick a
+merchant, product, and buyer, then start a negotiation.
+
 ## Getting Started (Windows, PowerShell)
 
 ### 1. Prerequisites
