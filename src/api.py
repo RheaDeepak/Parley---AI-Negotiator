@@ -40,13 +40,26 @@ state dicts, two separate endpoints, deliberately -- this is a different
 decision point from the human-approval gate, not a variant of it (see
 frontend/negotiate.html's separate "round-limit-card" for the same reason).
 
+This module also serves the static frontend (index.html, dashboard.html,
+frontend/negotiate.html, frontend/inventory.html) directly -- see the
+StaticFiles mount and file routes at the bottom of this file -- so the
+whole app (API + frontend) runs as a single process/port, no separate
+`http.server` needed. The frontend's own fetch() calls use a
+same-origin relative API_BASE, so this works identically whether
+running locally or deployed (e.g. on Render, which assigns the port
+dynamically via the PORT env var -- see `if __name__ == "__main__"`
+below).
+
 Run with:
     uvicorn src.api:app --reload --port 8000
 """
+import os
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src import personalization
@@ -67,10 +80,10 @@ from src.negotiation_loop import (
 
 app = FastAPI(title="Parley API")
 
-# Local demo tool: the frontend is opened separately (a plain static
-# file, or a simple local HTTP server on a different port) and calls this
-# API cross-origin. Wide open is fine here -- there's no auth, no real
-# user data, and it never leaves localhost in the intended setup.
+# Demo tool, no auth, no real user data: wide open even though the
+# frontend is now served same-origin by this same app (below) -- kept
+# open so a developer can still point a separately-run static server
+# (a different port, during frontend-only iteration) at this API too.
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
@@ -558,3 +571,44 @@ def round_limit_decision(req: RoundLimitDecisionRequest):
         }
 
     return {"status": "completed", **result}
+
+
+# ---------------------------------------------------------------------------
+# Static frontend -- registered LAST, after every /api/... route above, so
+# routing always matches an explicit /api/... path first; these can never
+# shadow them regardless of request order. Deliberately does NOT mount the
+# whole repo root as static (that would also serve data/, audits/,
+# NEGOTIATION_SPEC.md, etc.) -- only the exact files/directory the frontend
+# actually needs: index.html and dashboard.html by name, frontend/ as a
+# directory. No new frontend files exist elsewhere (verified: every page is
+# one self-contained .html with inline <style>/<script>, no separate CSS/JS
+# assets to serve).
+@app.get("/")
+def serve_landing_page():
+    return FileResponse("index.html")
+
+
+@app.get("/index.html")
+def serve_index_html():
+    return FileResponse("index.html")
+
+
+@app.get("/dashboard.html")
+def serve_dashboard_html():
+    return FileResponse("dashboard.html")
+
+
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
+
+if __name__ == "__main__":
+    # Alternative to the `uvicorn src.api:app ...` CLI invocation -- lets
+    # `python -m src.api` work directly, reading the port the same way
+    # either launch method would need to on a host that assigns it
+    # dynamically (e.g. Render sets PORT; 8000 is the local-dev default).
+    # host="0.0.0.0" is required for the app to be reachable at all inside
+    # a container/hosted environment -- 127.0.0.1 (uvicorn's own default)
+    # only accepts connections from inside the same machine.
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

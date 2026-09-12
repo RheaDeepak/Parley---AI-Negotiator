@@ -148,7 +148,10 @@
 // (unlike dashboard.html's scripts/generate_dashboard.py fallback): this
 // table is simple enough that a live-only fetch (same pattern
 // dashboard.html itself now uses -- Section 2Z) is sufficient.
-const API_BASE = "http://localhost:8000";
+// Same-origin, relative -- src/api.py now serves this page itself (single
+// process/port), so this resolves against whatever host actually served
+// it: http://localhost:8000 locally, the real Render URL once deployed.
+const API_BASE = "";
 
 const el = (id) => document.getElementById(id);
 const errorBanner = el("error-banner");

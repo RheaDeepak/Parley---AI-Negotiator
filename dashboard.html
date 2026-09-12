@@ -149,7 +149,10 @@
 // API server running, or to email/archive a point-in-time HTML file);
 // it will overwrite this file with a plain, non-live version when you
 // do, which is the deliberate fallback behavior.
-const API_BASE = "http://localhost:8000";
+// Same-origin, relative -- src/api.py now serves this page itself (single
+// process/port), so this resolves against whatever host actually served
+// it: http://localhost:8000 locally, the real Render URL once deployed.
+const API_BASE = "";
 const REFRESH_MS = 30000;
 
 const el = (id) => document.getElementById(id);

@@ -509,7 +509,10 @@
   </div>
 
 <script>
-const API_BASE = "http://localhost:8000";
+// Same-origin, relative -- src/api.py now serves this page itself (single
+// process/port), so this resolves against whatever host actually served
+// it: http://localhost:8000 locally, the real Render URL once deployed.
+const API_BASE = "";
 
 const el = (id) => document.getElementById(id);
 const merchantSelect = el("merchant-select");
